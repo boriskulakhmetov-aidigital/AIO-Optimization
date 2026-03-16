@@ -1,0 +1,180 @@
+import { GoogleGenAI } from '@google/genai';
+import {
+  getScanEngine, getQueriesForEngine, updateQueryResult,
+  saveScanEngineSynthesis, updateScanEngineStatus,
+  getScanEngines, areAllEnginesSynthesized,
+  getScanById, updateScanStatus, createScanReview,
+} from './_shared/db.js';
+import { getEngineName } from './_shared/engineRegistry.js';
+import { buildSynthesizerPrompt, formatQueriesForSynthesis } from './_shared/synthesizerPrompt.js';
+import type { EngineId, EngineSynthesis } from './_shared/types.js';
+
+/**
+ * POST /synthesize-engine-background  (background function)
+ *
+ * Runs synthesis for ONE engine. Triggered by scan-engine-background
+ * when all queries for that engine are complete.
+ *
+ * 1. Loads all query/response pairs for the engine
+ * 2. Sends them to Gemini with the synthesizer prompt
+ * 3. Parses the EngineSynthesis JSON output
+ * 4. Updates per-query scores in the DB
+ * 5. Saves the synthesis to scan_engines.synthesis_data
+ * 6. If all engines are synthesized, triggers review-background
+ */
+export default async (req: Request) => {
+  if (req.method !== 'POST') {
+    return new Response('Method not allowed', { status: 405 });
+  }
+
+  const body = await req.json().catch(() => null);
+  if (!body?.scanId || !body?.engineJobId) {
+    return new Response('Missing scanId or engineJobId', { status: 400 });
+  }
+
+  const { scanId, engineJobId } = body as {
+    scanId: string;
+    engineJobId: string;
+  };
+
+  try {
+    // Load engine info and scan context
+    const engineJob = await getScanEngine(engineJobId);
+    if (!engineJob) throw new Error(`Engine job not found: ${engineJobId}`);
+
+    const engineId = engineJob.engine_id as EngineId;
+    const engineName = getEngineName(engineId);
+
+    const scan = await getScanById(scanId);
+    if (!scan) throw new Error(`Scan not found: ${scanId}`);
+
+    // Mark engine as synthesizing
+    await updateScanEngineStatus(engineJobId, 'synthesizing');
+
+    // Load all queries for this engine
+    const queries = await getQueriesForEngine(engineJobId);
+    const completedQueries = queries.filter(q => q.status === 'complete' || q.status === 'error');
+
+    if (completedQueries.length === 0) {
+      console.warn(`No completed queries for engine ${engineId}, skipping synthesis`);
+      await updateScanEngineStatus(engineJobId, 'complete');
+      await checkAndTriggerReview(scanId, req);
+      return new Response('No queries to synthesize', { status: 200 });
+    }
+
+    // Build the synthesis prompt
+    const systemPrompt = buildSynthesizerPrompt({
+      engineName,
+      conceptName: scan.concept_name,
+      conceptType: scan.concept_type,
+      conceptCategory: scan.concept_category ?? '',
+      queriesCount: completedQueries.length,
+    });
+
+    const queryData = formatQueriesForSynthesis(completedQueries);
+
+    // Call Gemini to synthesize
+    const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY! });
+    const result = await ai.models.generateContent({
+      model: 'gemini-2.0-flash',
+      contents: [{ role: 'user', parts: [{ text: queryData }] }],
+      config: {
+        systemInstruction: systemPrompt,
+        maxOutputTokens: 16384,
+        temperature: 0.3,
+        responseMimeType: 'application/json',
+      },
+    });
+
+    const responseText = result.text ?? '';
+
+    // Parse the synthesis JSON
+    let synthesis: EngineSynthesis & { per_query_scores?: Array<{
+      query_id: string;
+      mentioned: boolean;
+      mention_position: number | null;
+      sentiment: string;
+      sentiment_score: number;
+      recommendation_strength: string;
+      context_type: string;
+    }> };
+
+    try {
+      synthesis = JSON.parse(responseText);
+    } catch {
+      const match = responseText.match(/\{[\s\S]*\}/);
+      if (match) {
+        synthesis = JSON.parse(match[0]);
+      } else {
+        throw new Error('Failed to parse synthesis response as JSON');
+      }
+    }
+
+    // Ensure required fields
+    synthesis.engine_id = engineId;
+    synthesis.engine_name = engineName;
+    synthesis.queries_total = queries.length;
+    synthesis.queries_completed = completedQueries.filter(q => q.status === 'complete').length;
+    synthesis.queries_failed = completedQueries.filter(q => q.status === 'error').length;
+
+    // Update per-query scores in the DB if the synthesizer provided them
+    if (synthesis.per_query_scores?.length) {
+      for (const score of synthesis.per_query_scores) {
+        await updateQueryResult(score.query_id, {
+          status: 'complete',
+          mentioned: score.mentioned,
+          mentionPosition: score.mention_position,
+          sentiment: score.sentiment,
+          sentimentScore: score.sentiment_score,
+          recommendationStrength: score.recommendation_strength,
+          contextType: score.context_type,
+        }).catch(err => console.warn(`Failed to update query score ${score.query_id}:`, err));
+      }
+    }
+
+    // Remove per_query_scores before saving (too large for the synthesis column)
+    const { per_query_scores: _, ...synthesisData } = synthesis;
+
+    // Save synthesis
+    await saveScanEngineSynthesis(engineJobId, synthesisData as EngineSynthesis);
+
+    console.log(`Synthesis complete for ${engineName}: AI-SOV=${synthesis.ai_sov}%, RSI=${synthesis.recommendation_strength_index}`);
+
+    // Check if all engines are done and trigger review
+    await checkAndTriggerReview(scanId, req);
+
+  } catch (err) {
+    console.error(`synthesize-engine-background error (${engineJobId}):`, err);
+    await updateScanEngineStatus(engineJobId, 'error', `Synthesis failed: ${err}`);
+  }
+
+  return new Response('Accepted', { status: 202 });
+};
+
+// Background function: Netlify v2 detects this from the `-background` filename suffix.
+
+// ── Helpers ──────────────────────────────────────────────────────────────────
+
+async function checkAndTriggerReview(scanId: string, req: Request) {
+  const allSynthesized = await areAllEnginesSynthesized(scanId);
+  if (!allSynthesized) return;
+
+  console.log(`All engines synthesized for scan ${scanId} — triggering cross-engine review`);
+
+  // Update scan status
+  await updateScanStatus(scanId, 'reviewing');
+
+  // Create review record
+  const reviewId = `${scanId}_review`;
+  await createScanReview(reviewId, scanId);
+
+  // Trigger review background function
+  const baseUrl = new URL(req.url);
+  const origin = `${baseUrl.protocol}//${baseUrl.host}`;
+
+  fetch(`${origin}/.netlify/functions/review-background`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ scanId }),
+  }).catch(err => console.warn('Failed to trigger review:', err));
+}

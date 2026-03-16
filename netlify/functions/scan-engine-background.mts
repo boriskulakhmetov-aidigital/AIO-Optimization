@@ -2,7 +2,7 @@ import { getStore } from '@netlify/blobs';
 import {
   updateScanEngineStatus, incrementScanEngineProgress,
   getQueriesForEngine, updateQueryResult,
-  getScanEngines,
+  getScanEngines, updateScanStatus,
 } from './_shared/db.js';
 import { queryEngine } from './_shared/engineClient.js';
 import { getEngine } from './_shared/engineRegistry.js';
@@ -114,13 +114,22 @@ export default async (req: Request) => {
       `Engine ${engineId} complete: ${completed - failed}/${totalQueries} ok, ${failed} failed`
     );
 
-    // Check if all engines for this scan are now done
+    // Trigger synthesis for this engine
+    const baseUrl = new URL(req.url);
+    const origin = `${baseUrl.protocol}//${baseUrl.host}`;
+
+    fetch(`${origin}/.netlify/functions/synthesize-engine-background`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ scanId, engineJobId }),
+    }).catch(err => console.warn(`Failed to trigger synthesis for ${engineId}:`, err));
+
+    // Check if all engines are done to update scan status
     const allEngines = await getScanEngines(scanId);
     const allDone = allEngines.every(e => e.status === 'complete' || e.status === 'error');
     if (allDone) {
-      console.log(`All engines complete for scan ${scanId} — ready for synthesis (Phase 4)`);
-      // TODO (Phase 4): Trigger synthesize-engine-background for each engine
-      // then cross-engine review-background when all syntheses are done
+      console.log(`All engines complete for scan ${scanId} — synthesis triggered for each`);
+      await updateScanStatus(scanId, 'synthesizing');
     }
 
   } catch (err) {
