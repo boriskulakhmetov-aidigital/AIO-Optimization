@@ -13,9 +13,11 @@ interface AIOReportProps {
   data: AIOReportData;
   conceptName: string;
   onNewScan: () => void;
+  scanId?: string | null;
+  authFetch?: (url: string, options?: RequestInit) => Promise<Response>;
 }
 
-export function AIOReport({ data, conceptName, onNewScan }: AIOReportProps) {
+export function AIOReport({ data, conceptName, onNewScan, scanId, authFetch }: AIOReportProps) {
   const [activePage, setActivePage] = useState<ReportPage>('overview');
   const [selectedEngine, setSelectedEngine] = useState<string | null>(null);
 
@@ -38,6 +40,8 @@ export function AIOReport({ data, conceptName, onNewScan }: AIOReportProps) {
         data={data}
         conceptName={conceptName}
         onNewScan={onNewScan}
+        scanId={scanId ?? null}
+        authFetch={authFetch ?? (async (url, opts) => fetch(url, opts))}
       />
 
       <nav className="aio-report__nav">
