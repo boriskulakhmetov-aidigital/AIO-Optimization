@@ -80,28 +80,39 @@ function AuthenticatedApp() {
       .catch(() => setUserStatus('active'));
   }, []);
 
+  // Default engines when orchestrator doesn't specify
+  const DEFAULT_ENGINES = ['chatgpt_free', 'gemini_free', 'claude_free', 'perplexity', 'copilot'];
+  const DEFAULT_QUERY_COUNT = 100;
+
   // ── Scan dispatch handler (called by orchestrator when user confirms) ──
   async function handleScanDispatch(config: ScanDispatchConfig, sessionId: string, messages: { role: string; content: string }[]) {
-    setConceptName(config.concept_name);
+    // Fill in defaults for optional fields the orchestrator may omit
+    const resolvedConfig: ScanDispatchConfig = {
+      ...config,
+      engines: config.engines?.length ? config.engines : DEFAULT_ENGINES,
+      query_count: config.query_count || DEFAULT_QUERY_COUNT,
+    };
+
+    setConceptName(resolvedConfig.concept_name);
     setScanId(sessionId);
-    setPhase('generating');  // show "Generating queries…" state
+    setPhase('generating');
     setSidebarRefreshKey(k => k + 1);
 
     setErrorDetail(null);
 
     try {
       // Step 1: Generate queries via Gemini
-      console.log('[AIO] Step 1: Generating queries…', { concept_name: config.concept_name, engines: config.engines, query_count: config.query_count });
+      console.log('[AIO] Step 1: Generating queries…', { concept_name: resolvedConfig.concept_name, engines: resolvedConfig.engines, query_count: resolvedConfig.query_count });
       const genRes = await authFetch('/.netlify/functions/generate-queries', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          concept_type: config.concept_type,
-          concept_name: config.concept_name,
-          concept_category: config.concept_category,
-          concept_context: config.concept_context,
-          engines: config.engines,
-          query_count: config.query_count,
+          concept_type: resolvedConfig.concept_type,
+          concept_name: resolvedConfig.concept_name,
+          concept_category: resolvedConfig.concept_category,
+          concept_context: resolvedConfig.concept_context,
+          engines: resolvedConfig.engines,
+          query_count: resolvedConfig.query_count,
         }),
       });
       if (!genRes.ok) {
@@ -115,7 +126,7 @@ function AuthenticatedApp() {
       console.log('[AIO] Step 1 complete:', genData.total_queries, 'queries generated');
 
       // Step 2: Dispatch scan with generated queries
-      console.log('[AIO] Step 2: Dispatching scan…', { scanId: sessionId, engines: config.engines.length, queries: genData.queries?.length });
+      console.log('[AIO] Step 2: Dispatching scan…', { scanId: sessionId, engines: resolvedConfig.engines.length, queries: genData.queries?.length });
       setPhase('scanning');
 
       const dispatchRes = await authFetch('/.netlify/functions/dispatch-scan', {
@@ -124,12 +135,12 @@ function AuthenticatedApp() {
         body: JSON.stringify({
           scanId: sessionId,
           config: {
-            concept_type: config.concept_type,
-            concept_name: config.concept_name,
-            concept_category: config.concept_category,
-            concept_context: config.concept_context,
-            engines: config.engines,
-            query_count: config.query_count,
+            concept_type: resolvedConfig.concept_type,
+            concept_name: resolvedConfig.concept_name,
+            concept_category: resolvedConfig.concept_category,
+            concept_context: resolvedConfig.concept_context,
+            engines: resolvedConfig.engines,
+            query_count: resolvedConfig.query_count,
           },
           queries: genData.queries,
           messages: messages.map(m => ({ role: m.role, content: m.content })),

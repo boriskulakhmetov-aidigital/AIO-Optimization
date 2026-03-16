@@ -27,14 +27,14 @@ const DISPATCH_SCAN_TOOL = {
       engines: {
         type: 'ARRAY' as const,
         items: { type: 'STRING' as const },
-        description: 'AI engines to test. Array of engine IDs.',
+        description: 'AI engines to test. Valid IDs: chatgpt_free, gemini_free, claude_free, perplexity, copilot, grok_free, meta_ai. Default to ["chatgpt_free","gemini_free","claude_free","perplexity","copilot"] if user does not specify.',
       },
       query_count: {
         type: 'INTEGER' as const,
-        description: 'Number of queries per engine (default 100)',
+        description: 'Number of queries per engine. Default 100.',
       },
     },
-    required: ['concept_type', 'concept_name', 'concept_category'],
+    required: ['concept_type', 'concept_name', 'concept_category', 'engines'],
   },
 };
 
