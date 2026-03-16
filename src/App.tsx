@@ -147,7 +147,7 @@ function AuthenticatedApp() {
       .then(r => r.json())
       .then(data => {
         setUserStatus(data.status ?? 'active');
-        setScanCount(data.audit_count ?? 0);
+        setScanCount(data.scan_count ?? 0);
       })
       .catch(() => setUserStatus('active'));
   }, []);

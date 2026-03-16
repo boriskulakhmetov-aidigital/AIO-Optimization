@@ -29,8 +29,12 @@ export async function requireAuth(req: Request): Promise<{ userId: string; email
   return { userId, email };
 }
 
-/** Checks DB status === 'admin'. Use after requireAuth. */
+/** Checks if user is admin (by DB status or ADMIN_EMAILS env var). */
 export async function isAdminUser(userId: string): Promise<boolean> {
   const row = await getUserStatus(userId);
-  return row?.status === 'admin';
+  if (row?.status === 'admin') return true;
+  // Also check ADMIN_EMAILS env var by email
+  const adminEmails = (process.env.ADMIN_EMAILS ?? '').split(',').map(e => e.trim().toLowerCase()).filter(Boolean);
+  const userEmail = row?.user_email?.toLowerCase();
+  return userEmail ? adminEmails.includes(userEmail) : false;
 }

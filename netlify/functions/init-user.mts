@@ -19,9 +19,14 @@ export default async (req: Request) => {
     await upsertUser(userId, email, orgDomain);
     const userRow = await getUserStatus(userId);
 
+    // Determine effective status — admin emails get admin regardless of DB status
+    const adminEmails = (process.env.ADMIN_EMAILS ?? '').split(',').map(e => e.trim().toLowerCase()).filter(Boolean);
+    const isAdmin = email ? adminEmails.includes(email.toLowerCase()) : false;
+    const effectiveStatus = isAdmin ? 'admin' : (userRow?.status ?? 'trial');
+
     return Response.json({
-      status: userRow?.status ?? 'trial',
-      audit_count: userRow?.audit_count ?? 0,
+      status: effectiveStatus,
+      scan_count: userRow?.scan_count ?? 0,
       org_domain: orgDomain,
     }, { headers: { 'Cache-Control': 'no-store' } });
   } catch (err) {
