@@ -8,7 +8,7 @@ export default async (req: Request) => {
       return Response.json({ error: 'Forbidden' }, { status: 403 });
     }
     await migrateDb();
-    return Response.json({ ok: true, message: 'Migration complete' });
+    return Response.json({ ok: true, message: 'AIO Optimization migration complete' });
   } catch (err) {
     return Response.json({ error: String(err) }, { status: 500 });
   }

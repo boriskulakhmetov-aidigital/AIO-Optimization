@@ -1,9 +1,12 @@
+// ── AIO Optimization — Frontend Types ────────────────────────────────────────
+
 export type AppPhase =
-  | 'chat'
-  | 'uploading'
-  | 'audit_running'
-  | 'visualizing'
-  | 'report_ready'
+  | 'chat'           // Orchestrator intake conversation
+  | 'generating'     // Generating queries
+  | 'scanning'       // Running queries across engines
+  | 'synthesizing'   // Per-engine synthesis running
+  | 'reviewing'      // Cross-engine review running
+  | 'report_ready'   // Final report available
   | 'error';
 
 export interface ChatMessage {
@@ -12,18 +15,23 @@ export interface ChatMessage {
   content: string;
 }
 
-export interface AssetState {
-  fileUri?: string;
-  mimeType?: string;
-  fileName?: string;
-  previewUrl?: string;
-  assetUrl?: string;
-}
-
-export interface IntakeSummary {
-  asset_type: string;
-  asset_tier: string;
-  brand_name: string;
-  offer: string;
-  [key: string]: unknown;
-}
+// Re-export shared types that frontend needs
+export type {
+  ConceptType,
+  EngineId,
+  QueryIntentType,
+  ScanStatus,
+  EngineJobStatus,
+  ScanConfig,
+  GeneratedQuery,
+  EngineSynthesis,
+  CrossEngineReview,
+  AIOReportData,
+  OverallKPIs,
+  AIOReportMeta,
+  ScanProgressResponse,
+  ActionItem,
+  EngineRanking,
+  IntentBreakdown,
+  QueryLogEntry,
+} from '../../netlify/functions/_shared/types.js';
