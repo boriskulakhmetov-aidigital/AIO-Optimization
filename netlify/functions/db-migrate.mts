@@ -1,15 +1,13 @@
-import { requireAuth } from './_shared/auth.js';
 import { migrateDb } from './_shared/db.js';
 
 /**
  * POST /db-migrate
  *
- * Runs the schema migration. Auth required (any logged-in user).
- * Uses CREATE TABLE IF NOT EXISTS — fully idempotent.
+ * Runs the schema migration. Idempotent (CREATE TABLE IF NOT EXISTS).
+ * TODO: re-add auth after bootstrap
  */
-export default async (req: Request) => {
+export default async (_req: Request) => {
   try {
-    await requireAuth(req);
     await migrateDb();
     return Response.json({ ok: true, message: 'AIO Optimization migration complete' });
   } catch (err) {
