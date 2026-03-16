@@ -1,36 +1,17 @@
 import { useEffect, useRef, useState } from 'react';
-import type { ChatMessage, AssetState } from '../lib/types';
+import type { ChatMessage } from '../lib/types';
 import { MessageBubble } from './MessageBubble';
-import { UploadZone } from './UploadZone';
 
 interface Props {
   messages: ChatMessage[];
   streaming: boolean;
   error: string | null;
-  asset: AssetState | null;
-  uploading: boolean;
-  uploadError: string | null;
-  onSend: (text: string, asset?: AssetState | null) => void;
-  onFile: (file: File) => Promise<void>;
-  onUrl: (url: string) => void;
-  onClearAsset: () => void;
+  onSend: (text: string) => void;
 }
 
-export function ChatPanel({
-  messages,
-  streaming,
-  error,
-  asset,
-  uploading,
-  uploadError,
-  onSend,
-  onFile,
-  onUrl,
-  onClearAsset,
-}: Props) {
+export function ChatPanel({ messages, streaming, error, onSend }: Props) {
   const [input, setInput] = useState('');
   const bottomRef = useRef<HTMLDivElement>(null);
-  const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -40,7 +21,7 @@ export function ChatPanel({
     const text = input.trim();
     if (!text || streaming) return;
     setInput('');
-    onSend(text, asset);
+    onSend(text);
   }
 
   function handleKeyDown(e: React.KeyboardEvent) {
@@ -57,11 +38,11 @@ export function ChatPanel({
       <div className="chat-messages">
         {isEmpty && (
           <div className="chat-welcome">
-            <div className="chat-welcome__icon">🧠</div>
-            <h2 className="chat-welcome__title">Neuromarketing Audit</h2>
+            <div className="chat-welcome__icon">&#128269;</div>
+            <h2 className="chat-welcome__title">AI Search Optimization</h2>
             <p className="chat-welcome__sub">
-              Upload a creative or paste a URL, then describe your brand and goal. I'll run a
-              full 41-criterion neuromarketing and color psychology audit.
+              Tell me about a product, brand, or concept and I'll analyze how it's recommended
+              across consumer AI engines like ChatGPT, Gemini, Claude, Grok, and more.
             </p>
           </div>
         )}
@@ -83,19 +64,10 @@ export function ChatPanel({
       </div>
 
       <div className="chat-input-area">
-        <UploadZone
-          onFile={onFile}
-          onUrl={onUrl}
-          asset={asset}
-          uploading={uploading}
-          uploadError={uploadError}
-          onClear={onClearAsset}
-        />
         <div className="chat-input-row">
           <textarea
-            ref={textareaRef}
             className="chat-textarea"
-            placeholder="Describe your brand, audience, or type 'default' for standard settings…"
+            placeholder="Describe what you'd like to analyze (e.g., 'How is Tesla recommended by AI assistants?')"
             value={input}
             onChange={e => setInput(e.target.value)}
             onKeyDown={handleKeyDown}
@@ -107,7 +79,7 @@ export function ChatPanel({
             onClick={handleSend}
             disabled={streaming || !input.trim()}
           >
-            {streaming ? '…' : '↑'}
+            {streaming ? '...' : '\u2191'}
           </button>
         </div>
       </div>

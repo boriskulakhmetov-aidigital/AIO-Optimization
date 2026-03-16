@@ -79,8 +79,11 @@ export default async (req: Request) => {
           return response;
         }, 3);
 
+        let snippetText = '';
+
         if ('result' in outcome) {
           const response = outcome.result;
+          snippetText = response.text;
           await updateQueryResult(query.id, {
             status: response.ok ? 'complete' : 'complete', // placeholder responses still count as complete
             responseText: response.text,
@@ -89,6 +92,7 @@ export default async (req: Request) => {
         } else {
           // All retries exhausted
           failed++;
+          snippetText = outcome.error;
           await updateQueryResult(query.id, {
             status: 'error',
             responseText: outcome.error,
@@ -99,9 +103,17 @@ export default async (req: Request) => {
         completed++;
         await incrementScanEngineProgress(engineJobId);
 
-        // Update Blob progress every 5 queries or on last query
-        if (completed % 5 === 0 || completed === totalQueries) {
-          await updateBlobProgress(store, scanId, engineId, 'querying', completed, totalQueries);
+        // Build snippet for live feed
+        const snippet = {
+          engine_id: engineId,
+          query: query.query_text.slice(0, 120),
+          response: snippetText.slice(0, 200),
+          ts: Date.now(),
+        };
+
+        // Update Blob progress every 3 queries or on last query (more frequent for live feel)
+        if (completed % 3 === 0 || completed === totalQueries) {
+          await updateBlobProgress(store, scanId, engineId, 'querying', completed, totalQueries, snippet);
         }
       },
     );
@@ -145,6 +157,13 @@ export default async (req: Request) => {
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
+interface Snippet {
+  engine_id: string;
+  query: string;
+  response: string;
+  ts: number;
+}
+
 async function updateBlobProgress(
   store: ReturnType<typeof getStore>,
   scanId: string,
@@ -152,18 +171,38 @@ async function updateBlobProgress(
   engineStatus: string,
   done: number,
   total: number,
+  snippet?: Snippet,
 ) {
   try {
     const raw = await store.get(scanId, { type: 'text' }).catch(() => null);
-    const progress = raw ? JSON.parse(raw) : { scan_id: scanId, status: 'scanning', engines: [] };
+    const progress = raw ? JSON.parse(raw) : { scan_id: scanId, status: 'scanning', engines: [], feed: [] };
 
     const engineIdx = progress.engines.findIndex((e: { engine_id: string }) => e.engine_id === engineId);
-    const engineData = { engine_id: engineId, status: engineStatus, queries_total: total, queries_done: done };
+    const engineData: Record<string, unknown> = {
+      engine_id: engineId, status: engineStatus, queries_total: total, queries_done: done,
+    };
+
+    // Attach latest snippet to the engine card
+    if (snippet) {
+      engineData.latest_snippet = snippet;
+    } else if (engineIdx >= 0 && progress.engines[engineIdx].latest_snippet) {
+      // Preserve existing snippet if none provided
+      engineData.latest_snippet = progress.engines[engineIdx].latest_snippet;
+    }
 
     if (engineIdx >= 0) {
       progress.engines[engineIdx] = engineData;
     } else {
       progress.engines.push(engineData);
+    }
+
+    // Append to global feed (keep last 15 across all engines)
+    if (snippet) {
+      if (!progress.feed) progress.feed = [];
+      progress.feed.push(snippet);
+      if (progress.feed.length > 15) {
+        progress.feed = progress.feed.slice(-15);
+      }
     }
 
     // Update overall scan status

@@ -1,6 +1,15 @@
 import { useState, useRef, useCallback } from 'react';
-import type { ChatMessage, AssetState, IntakeSummary } from '../lib/types';
+import type { ChatMessage } from '../lib/types';
 import { parseSSEStream } from '../lib/sseParser';
+
+export interface ScanDispatchConfig {
+  concept_type: string;
+  concept_name: string;
+  concept_category: string;
+  concept_context?: string;
+  engines: string[];
+  query_count: number;
+}
 
 interface OrchestratorState {
   messages: ChatMessage[];
@@ -11,8 +20,8 @@ interface OrchestratorState {
 type AuthFetch = (url: string, options?: RequestInit) => Promise<Response>;
 
 export function useOrchestrator(
-  onAuditDispatch: (intakeSummary: IntakeSummary, sessionId: string, messages: ChatMessage[]) => void,
-  authFetch: AuthFetch
+  onScanDispatch: (config: ScanDispatchConfig, sessionId: string, messages: ChatMessage[]) => void,
+  authFetch: AuthFetch,
 ) {
   const [state, setState] = useState<OrchestratorState>({
     messages: [],
@@ -20,14 +29,13 @@ export function useOrchestrator(
     error: null,
   });
 
-  const messagesRef      = useRef<ChatMessage[]>([]);
-  const sessionIdRef     = useRef<string>(crypto.randomUUID());
-  const sessionSavedRef  = useRef(false);
+  const messagesRef = useRef<ChatMessage[]>([]);
+  const sessionIdRef = useRef<string>(crypto.randomUUID());
+  const sessionSavedRef = useRef(false);
 
-  /** Reset the hook for a new audit session */
   const reset = useCallback(() => {
-    messagesRef.current    = [];
-    sessionIdRef.current   = crypto.randomUUID();
+    messagesRef.current = [];
+    sessionIdRef.current = crypto.randomUUID();
     sessionSavedRef.current = false;
     setState({ messages: [], streaming: false, error: null });
   }, []);
@@ -49,17 +57,17 @@ export function useOrchestrator(
     }
   }
 
-  async function sendMessage(userText: string, asset?: AssetState | null) {
+  async function sendMessage(userText: string) {
     if (state.streaming) return;
 
     const userMsg: ChatMessage = { id: crypto.randomUUID(), role: 'user', content: userText };
     addMessage(userMsg);
     setState(s => ({ ...s, streaming: true, error: null }));
 
-    // Save session to DB on first message
+    // Save scan session on first message
     if (!sessionSavedRef.current) {
       sessionSavedRef.current = true;
-      authFetch('/.netlify/functions/save-session', {
+      authFetch('/.netlify/functions/save-scan', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ action: 'create', id: sessionIdRef.current, status: 'chatting' }),
@@ -72,9 +80,6 @@ export function useOrchestrator(
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           messages: messagesRef.current.map(m => ({ role: m.role, content: m.content })),
-          fileUri:  asset?.fileUri,
-          mimeType: asset?.mimeType,
-          assetUrl: asset?.assetUrl,
         }),
       });
 
@@ -83,11 +88,11 @@ export function useOrchestrator(
       for await (const event of parseSSEStream(res.body)) {
         if (event.type === 'text_delta') {
           updateLastAssistant(event.text);
-        } else if (event.type === 'audit_dispatch') {
-          onAuditDispatch(
-            event.intakeSummary as IntakeSummary,
+        } else if (event.type === 'scan_dispatch') {
+          onScanDispatch(
+            event.scanConfig as unknown as ScanDispatchConfig,
             sessionIdRef.current,
-            messagesRef.current
+            messagesRef.current,
           );
         } else if (event.type === 'error') {
           throw new Error(event.message);
@@ -95,7 +100,7 @@ export function useOrchestrator(
       }
 
       // Persist messages after each exchange
-      authFetch('/.netlify/functions/save-session', {
+      authFetch('/.netlify/functions/save-scan', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

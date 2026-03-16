@@ -1,6 +1,6 @@
 export type SSEEvent =
   | { type: 'text_delta'; text: string }
-  | { type: 'audit_dispatch'; intakeSummary: Record<string, unknown> }
+  | { type: 'scan_dispatch'; scanConfig: Record<string, unknown> }
   | { type: 'done' }
   | { type: 'error'; message: string };
 
