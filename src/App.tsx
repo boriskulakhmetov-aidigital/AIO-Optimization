@@ -9,11 +9,12 @@ import type { ScanDispatchConfig } from './hooks/useOrchestrator';
 import { useScanPoller } from './hooks/useScanPoller';
 import { useSynthesisPoller } from './hooks/useSynthesisPoller';
 import { ChatPanel } from './components/ChatPanel';
+import { EngineSelector } from './components/EngineSelector';
 import { ScanDashboard } from './components/ScanDashboard';
 import { ScanSidebar } from './components/ScanSidebar';
 import { AdminPanel } from './components/AdminPanel';
 import { AIOReport } from './components/report/AIOReport';
-import type { AIOReportData } from './lib/types';
+import type { AIOReportData, EngineId } from './lib/types';
 
 export default function App() {
   const { isLoaded, isSignedIn } = useAuth();
@@ -60,6 +61,7 @@ function AuthenticatedApp() {
   const [loadingScanId, setLoadingScanId] = useState<string | null>(null);
   const [reportData, setReportData] = useState<AIOReportData | null>(null);
   const [errorDetail, setErrorDetail] = useState<string | null>(null);
+  const [selectedEngines, setSelectedEngines] = useState<EngineId[]>([]);
 
   async function authFetch(url: string, options: RequestInit = {}) {
     const token = await getToken();
@@ -80,18 +82,22 @@ function AuthenticatedApp() {
       .catch(() => setUserStatus('active'));
   }, []);
 
-  // Default engines when orchestrator doesn't specify
-  const DEFAULT_ENGINES = ['chatgpt_free', 'gemini_free', 'claude_free', 'perplexity', 'copilot'];
   const DEFAULT_QUERY_COUNT = 50;
 
   // ── Scan dispatch handler (called by orchestrator when user confirms) ──
   async function handleScanDispatch(config: ScanDispatchConfig, sessionId: string, messages: { role: string; content: string }[]) {
-    // Fill in defaults for optional fields the orchestrator may omit
+    // Use user-selected engines from the EngineSelector widget
     const resolvedConfig: ScanDispatchConfig = {
       ...config,
-      engines: config.engines?.length ? config.engines : DEFAULT_ENGINES,
+      engines: selectedEngines.length > 0 ? selectedEngines : (config.engines?.length ? config.engines : []),
       query_count: config.query_count || DEFAULT_QUERY_COUNT,
     };
+
+    if (!resolvedConfig.engines?.length) {
+      setErrorDetail('No engines selected. Please select at least one AI engine.');
+      setPhase('error');
+      return;
+    }
 
     setConceptName(resolvedConfig.concept_name);
     setScanId(sessionId);
@@ -347,6 +353,13 @@ function AuthenticatedApp() {
                   streaming={streaming}
                   error={chatError}
                   onSend={sendMessage}
+                  engineSelector={
+                    <EngineSelector
+                      authFetch={authFetch}
+                      selectedEngines={selectedEngines}
+                      onSelectionChange={setSelectedEngines}
+                    />
+                  }
                 />
               )}
 

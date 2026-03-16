@@ -7,9 +7,10 @@ interface Props {
   streaming: boolean;
   error: string | null;
   onSend: (text: string) => void;
+  engineSelector?: React.ReactNode;
 }
 
-export function ChatPanel({ messages, streaming, error, onSend }: Props) {
+export function ChatPanel({ messages, streaming, error, onSend, engineSelector }: Props) {
   const [input, setInput] = useState('');
   const bottomRef = useRef<HTMLDivElement>(null);
 
@@ -64,6 +65,7 @@ export function ChatPanel({ messages, streaming, error, onSend }: Props) {
       </div>
 
       <div className="chat-input-area">
+        {engineSelector}
         <div className="chat-input-row">
           <textarea
             className="chat-textarea"

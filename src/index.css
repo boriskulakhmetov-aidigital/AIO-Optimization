@@ -453,6 +453,135 @@ body {
 }
 
 /* ── Input Area ──────────────────────────────────── */
+/* ── Engine Selector ───────────────────────────────────────────────────────── */
+
+.engine-selector {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+
+.engine-selector__header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  cursor: pointer;
+  user-select: none;
+  font-size: 0.8rem;
+}
+
+.engine-selector__toggle {
+  font-size: 0.65rem;
+  color: var(--muted);
+  width: 12px;
+}
+
+.engine-selector__label {
+  font-weight: 600;
+  color: var(--text);
+}
+
+.engine-selector__count {
+  color: var(--muted);
+  font-size: 0.75rem;
+  margin-left: auto;
+}
+
+.engine-selector__actions {
+  display: flex;
+  gap: 6px;
+  margin-left: 8px;
+}
+
+.engine-selector__link {
+  background: none;
+  border: none;
+  color: var(--accent);
+  font-size: 0.72rem;
+  cursor: pointer;
+  padding: 0;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.engine-selector__link:hover {
+  opacity: 0.8;
+}
+
+.engine-selector__grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 0 12px 10px;
+}
+
+.engine-selector__group {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+
+.engine-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 10px;
+  border-radius: 20px;
+  border: 1px solid var(--border);
+  cursor: pointer;
+  transition: all 0.15s;
+  font-size: 0.75rem;
+  background: var(--bg);
+  color: var(--text);
+  white-space: nowrap;
+}
+
+.engine-chip:hover:not(.engine-chip--disabled) {
+  border-color: var(--accent);
+}
+
+.engine-chip--selected {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+}
+
+.engine-chip--disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.engine-chip__input {
+  display: none;
+}
+
+.engine-chip__dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.engine-chip__name {
+  font-weight: 500;
+}
+
+.engine-chip__lock {
+  font-size: 0.65rem;
+  opacity: 0.6;
+}
+
+.engine-chip__tier {
+  font-size: 0.55rem;
+  font-weight: 700;
+  padding: 1px 4px;
+  border-radius: 3px;
+  background: var(--accent);
+  color: white;
+  letter-spacing: 0.5px;
+}
+
 .chat-input-area {
   border-top: 1px solid var(--border);
   padding: 16px 24px;
