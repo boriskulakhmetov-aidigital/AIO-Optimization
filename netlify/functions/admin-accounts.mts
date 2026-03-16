@@ -1,6 +1,6 @@
 import { requireAuth, isAdminUser } from './_shared/auth.js';
 import {
-  adminListAccounts, adminListUsers, adminGetUserSessions,
+  adminListAccounts, adminListUsers, adminGetUserScans,
   adminSetUserStatus, adminSetOrgStatus
 } from './_shared/db.js';
 
@@ -28,8 +28,8 @@ export default async (req: Request) => {
 
     // Read queries
     if (userId) {
-      const sessions = await adminGetUserSessions(userId);
-      return Response.json({ sessions });
+      const scans = await adminGetUserScans(userId);
+      return Response.json({ scans });
     }
     if (domain) {
       const users = await adminListUsers(domain);
