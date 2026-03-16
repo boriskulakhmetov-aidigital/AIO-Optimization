@@ -82,7 +82,7 @@ function AuthenticatedApp() {
 
   // Default engines when orchestrator doesn't specify
   const DEFAULT_ENGINES = ['chatgpt_free', 'gemini_free', 'claude_free', 'perplexity', 'copilot'];
-  const DEFAULT_QUERY_COUNT = 100;
+  const DEFAULT_QUERY_COUNT = 50;
 
   // ── Scan dispatch handler (called by orchestrator when user confirms) ──
   async function handleScanDispatch(config: ScanDispatchConfig, sessionId: string, messages: { role: string; content: string }[]) {

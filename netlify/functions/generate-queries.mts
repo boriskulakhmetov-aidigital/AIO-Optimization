@@ -9,9 +9,6 @@ import type { ConceptType, GeneratedQuery, EngineId } from './_shared/types.js';
  * Takes the scan config from the orchestrator and generates ~N queries
  * using Gemini. Returns the queries grouped by engine (same queries for
  * all engines, since we're testing how each engine responds to the same prompts).
- *
- * This is the "Response Processor" — decoupled from the Orchestrator.
- * The Orchestrator only collects input; this function builds the query set.
  */
 export default async (req: Request) => {
   if (req.method !== 'POST') {
@@ -28,7 +25,7 @@ export default async (req: Request) => {
       concept_category,
       concept_context,
       engines,
-      query_count = 100,
+      query_count = 50,
     } = body as {
       concept_type: ConceptType;
       concept_name: string;
@@ -45,7 +42,7 @@ export default async (req: Request) => {
       return Response.json({ error: 'At least one engine must be selected' }, { status: 400 });
     }
 
-    const clampedCount = Math.max(20, Math.min(200, query_count));
+    const clampedCount = Math.max(20, Math.min(80, query_count));
 
     // Generate queries using Gemini
     const prompt = buildQueryGeneratorPrompt({
@@ -61,7 +58,7 @@ export default async (req: Request) => {
       model: 'gemini-2.0-flash',
       contents: [{ role: 'user', parts: [{ text: prompt }] }],
       config: {
-        maxOutputTokens: 8192,
+        maxOutputTokens: 4096,
         temperature: 0.9,  // higher creativity for diverse queries
         responseMimeType: 'application/json',
       },
