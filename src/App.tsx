@@ -59,6 +59,7 @@ function AuthenticatedApp() {
   const [showAdmin, setShowAdmin] = useState(false);
   const [loadingScanId, setLoadingScanId] = useState<string | null>(null);
   const [reportData, setReportData] = useState<AIOReportData | null>(null);
+  const [errorDetail, setErrorDetail] = useState<string | null>(null);
 
   async function authFetch(url: string, options: RequestInit = {}) {
     const token = await getToken();
@@ -86,8 +87,11 @@ function AuthenticatedApp() {
     setPhase('generating');  // show "Generating queries…" state
     setSidebarRefreshKey(k => k + 1);
 
+    setErrorDetail(null);
+
     try {
       // Step 1: Generate queries via Gemini
+      console.log('[AIO] Step 1: Generating queries…', { concept_name: config.concept_name, engines: config.engines, query_count: config.query_count });
       const genRes = await authFetch('/.netlify/functions/generate-queries', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -102,13 +106,16 @@ function AuthenticatedApp() {
       });
       if (!genRes.ok) {
         const errText = await genRes.text();
-        console.error('Generate queries failed:', errText);
+        console.error('[AIO] generate-queries failed:', genRes.status, errText);
+        setErrorDetail(`Generate queries failed (${genRes.status}): ${errText}`);
         setPhase('error');
         return;
       }
       const genData = await genRes.json();
+      console.log('[AIO] Step 1 complete:', genData.total_queries, 'queries generated');
 
       // Step 2: Dispatch scan with generated queries
+      console.log('[AIO] Step 2: Dispatching scan…', { scanId: sessionId, engines: config.engines.length, queries: genData.queries?.length });
       setPhase('scanning');
 
       const dispatchRes = await authFetch('/.netlify/functions/dispatch-scan', {
@@ -130,11 +137,16 @@ function AuthenticatedApp() {
       });
       if (!dispatchRes.ok) {
         const errText = await dispatchRes.text();
-        console.error('Dispatch scan failed:', errText);
+        console.error('[AIO] dispatch-scan failed:', dispatchRes.status, errText);
+        setErrorDetail(`Dispatch scan failed (${dispatchRes.status}): ${errText}`);
         setPhase('error');
+        return;
       }
+      const dispatchData = await dispatchRes.json();
+      console.log('[AIO] Step 2 complete:', dispatchData);
     } catch (err) {
-      console.error('Dispatch scan error:', err);
+      console.error('[AIO] Dispatch error:', err);
+      setErrorDetail(`Error: ${err instanceof Error ? err.message : String(err)}`);
       setPhase('error');
     }
   }
@@ -369,6 +381,12 @@ function AuthenticatedApp() {
               {phase === 'error' && (
                 <div className="error-page">
                   <p className="error-page__msg">Something went wrong during analysis.</p>
+                  {errorDetail && (
+                    <pre className="error-page__detail">{errorDetail}</pre>
+                  )}
+                  {chatError && !errorDetail && (
+                    <pre className="error-page__detail">{chatError}</pre>
+                  )}
                   <button className="btn-primary" onClick={handleNewScan}>Try Again</button>
                 </div>
               )}

@@ -74,6 +74,8 @@ export function useOrchestrator(
         if (event.type === 'text_delta') {
           updateLastAssistant(event.text);
         } else if (event.type === 'scan_dispatch') {
+          console.log('[AIO] Orchestrator emitted scan_dispatch:', event.scanConfig);
+          // Call dispatch handler but don't let its errors kill the orchestrator
           onScanDispatch(
             event.scanConfig as unknown as ScanDispatchConfig,
             sessionIdRef.current,
