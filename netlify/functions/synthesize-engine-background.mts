@@ -76,7 +76,7 @@ export default async (req: Request) => {
     // Call Gemini to synthesize
     const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY! });
     const result = await ai.models.generateContent({
-      model: 'gemini-2.0-flash',
+      model: 'gemini-3.1-pro-preview',
       contents: [{ role: 'user', parts: [{ text: queryData }] }],
       config: {
         systemInstruction: systemPrompt,
