@@ -347,15 +347,29 @@ export async function bulkInsertQueries(queries: Array<{
   intentType: string;
   intentSubtype?: string;
 }>) {
+  if (queries.length === 0) return;
   const sql = getDb();
-  // Batch insert using unnest for efficiency
-  for (const q of queries) {
-    await sql`
-      INSERT INTO scan_queries (id, scan_engine_id, scan_id, query_text, intent_type, intent_subtype)
-      VALUES (${q.id}, ${q.scanEngineId}, ${q.scanId}, ${q.queryText}, ${q.intentType}, ${q.intentSubtype ?? null})
-      ON CONFLICT (id) DO NOTHING
-    `;
-  }
+
+  // Single-statement batch insert using unnest arrays (1 HTTP round-trip)
+  const ids = queries.map(q => q.id);
+  const scanEngineIds = queries.map(q => q.scanEngineId);
+  const scanIds = queries.map(q => q.scanId);
+  const queryTexts = queries.map(q => q.queryText);
+  const intentTypes = queries.map(q => q.intentType);
+  const intentSubtypes = queries.map(q => q.intentSubtype ?? null);
+
+  await sql`
+    INSERT INTO scan_queries (id, scan_engine_id, scan_id, query_text, intent_type, intent_subtype)
+    SELECT * FROM unnest(
+      ${ids}::text[],
+      ${scanEngineIds}::text[],
+      ${scanIds}::text[],
+      ${queryTexts}::text[],
+      ${intentTypes}::text[],
+      ${intentSubtypes}::text[]
+    )
+    ON CONFLICT (id) DO NOTHING
+  `;
 }
 
 export async function updateQueryResult(id: string, result: {
