@@ -1,0 +1,500 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Debug — Neuromarketing Audit</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --bg: #0a0a0f; --surface: #13131a; --surface-2: #1c1c28;
+      --border: #2a2a3a; --text: #e8e8f0; --muted: #9090a8;
+      --accent: #7c6af7; --green: #68d391; --red: #f56565;
+      --yellow: #f6e05e; --blue: #63b3ed; --orange: #f6ad55;
+    }
+    body { background: var(--bg); color: var(--text); font-family: "SF Mono", Monaco, "Cascadia Code", monospace; font-size: 13px; }
+    h1 { font-size: 1rem; font-weight: 700; color: var(--accent); letter-spacing: 0.08em; text-transform: uppercase; }
+    h2 { font-size: 0.78rem; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted); margin-bottom: 10px; }
+
+    .layout { display: grid; grid-template-columns: 1fr 1fr; grid-template-rows: auto 1fr; height: 100vh; gap: 0; }
+    .header { grid-column: 1 / -1; display: flex; align-items: center; gap: 16px; padding: 12px 20px; border-bottom: 1px solid var(--border); }
+    .header-badge { font-size: 0.7rem; background: var(--red); color: #fff; padding: 2px 8px; border-radius: 99px; font-weight: 700; letter-spacing: 0.05em; }
+    .header-time { margin-left: auto; color: var(--muted); font-size: 0.78rem; }
+
+    .panel { border-right: 1px solid var(--border); display: flex; flex-direction: column; overflow: hidden; }
+    .panel:last-child { border-right: none; }
+    .panel-header { padding: 12px 16px; border-bottom: 1px solid var(--border); display: flex; align-items: center; gap: 10px; flex-shrink: 0; }
+    .panel-body { flex: 1; overflow-y: auto; padding: 14px 16px; display: flex; flex-direction: column; gap: 10px; }
+
+    /* Controls */
+    label { display: block; font-size: 0.75rem; color: var(--muted); margin-bottom: 4px; letter-spacing: 0.05em; }
+    input, textarea, select {
+      width: 100%; background: var(--surface); border: 1px solid var(--border);
+      border-radius: 6px; color: var(--text); font: inherit; padding: 7px 10px; outline: none;
+    }
+    input:focus, textarea:focus { border-color: var(--accent); }
+    textarea { resize: vertical; min-height: 60px; }
+    .field { margin-bottom: 10px; }
+    .row { display: flex; gap: 8px; }
+    .row input { flex: 1; }
+
+    button {
+      font: inherit; font-size: 0.8rem; font-weight: 700; letter-spacing: 0.05em;
+      padding: 7px 16px; border-radius: 6px; border: none; cursor: pointer;
+      background: var(--accent); color: #fff; white-space: nowrap;
+      transition: opacity 0.15s;
+    }
+    button:hover { opacity: 0.85; }
+    button:disabled { opacity: 0.4; cursor: not-allowed; }
+    button.secondary { background: var(--surface-2); color: var(--muted); border: 1px solid var(--border); }
+    button.danger { background: var(--red); }
+
+    /* Log area */
+    .log { flex: 1; overflow-y: auto; background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 12px; display: flex; flex-direction: column; gap: 4px; min-height: 200px; }
+    .log-empty { color: var(--muted); font-size: 0.8rem; font-style: italic; }
+
+    .entry { display: grid; grid-template-columns: 80px 90px 1fr; gap: 8px; align-items: baseline; padding: 3px 0; border-bottom: 1px solid rgba(255,255,255,0.03); font-size: 0.78rem; }
+    .entry:last-child { border-bottom: none; }
+    .entry-time { color: var(--muted); }
+    .entry-type { font-weight: 700; padding: 1px 6px; border-radius: 4px; font-size: 0.72rem; letter-spacing: 0.04em; display: inline-block; }
+    .type-text_delta  { background: rgba(99,179,237,0.15); color: var(--blue); }
+    .type-audit_dispatch { background: rgba(246,173,85,0.15); color: var(--orange); }
+    .type-done        { background: rgba(104,211,145,0.15); color: var(--green); }
+    .type-error       { background: rgba(245,101,101,0.2); color: var(--red); }
+    .type-keepalive   { background: rgba(144,144,168,0.1); color: var(--muted); }
+    .type-request     { background: rgba(124,106,247,0.15); color: var(--accent); }
+    .type-response    { background: rgba(104,211,145,0.12); color: var(--green); }
+    .type-poll        { background: rgba(246,224,94,0.12); color: var(--yellow); }
+    .type-info        { background: rgba(144,144,168,0.12); color: var(--muted); }
+
+    .entry-body { color: var(--text); word-break: break-all; white-space: pre-wrap; }
+    .entry-body.collapsed { max-height: 2.5em; overflow: hidden; cursor: pointer; position: relative; }
+    .entry-body.collapsed::after { content: '…'; position: absolute; right: 0; bottom: 0; background: var(--surface); padding-left: 4px; }
+    .entry-body code { color: var(--accent); }
+
+    .stat { display: flex; justify-content: space-between; align-items: center; padding: 6px 10px; background: var(--surface-2); border-radius: 6px; font-size: 0.78rem; }
+    .stat-label { color: var(--muted); }
+    .stat-val { font-weight: 700; }
+    .stat-val.ok { color: var(--green); }
+    .stat-val.err { color: var(--red); }
+    .stat-val.warn { color: var(--yellow); }
+    .stat-val.info { color: var(--blue); }
+
+    .divider { height: 1px; background: var(--border); margin: 6px 0; }
+
+    /* Scrollbar */
+    ::-webkit-scrollbar { width: 5px; height: 5px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 99px; }
+  </style>
+</head>
+<body>
+<div class="layout">
+  <!-- Header -->
+  <header class="header">
+    <h1>Neuromarketing Audit</h1>
+    <span class="header-badge">DEBUG</span>
+    <span style="color:var(--muted);font-size:0.78rem">Live function inspector</span>
+    <span class="header-time" id="clock"></span>
+    <button class="secondary" onclick="clearAll()" style="margin-left:8px">Clear all</button>
+  </header>
+
+  <!-- Left: Orchestrator -->
+  <div class="panel">
+    <div class="panel-header">
+      <h2>Orchestrator SSE</h2>
+      <span id="orch-status" style="font-size:0.72rem;color:var(--muted)">idle</span>
+      <button id="orch-stop-btn" class="danger secondary" style="margin-left:auto;display:none" onclick="stopOrchestrator()">Stop</button>
+    </div>
+    <div class="panel-body">
+      <div class="field">
+        <label>MESSAGE</label>
+        <textarea id="orch-msg" placeholder="Type a message to send to the orchestrator…">Hello, I want to audit my landing page at https://example.com</textarea>
+      </div>
+      <div class="row">
+        <div class="field" style="flex:1">
+          <label>ASSET URL (optional)</label>
+          <input id="orch-asset-url" placeholder="https://…" />
+        </div>
+      </div>
+      <div class="field">
+        <label>FILE URI (from upload test, optional)</label>
+        <input id="orch-file-uri" placeholder="https://generativelanguage.googleapis.com/…" />
+      </div>
+      <div class="row" style="margin-bottom:10px">
+        <button id="orch-send-btn" onclick="sendOrchestrator()">Send →</button>
+        <button class="secondary" onclick="clearLog('orch-log')">Clear log</button>
+      </div>
+
+      <div class="stat"><span class="stat-label">Events received</span><span class="stat-val info" id="orch-count">0</span></div>
+      <div class="stat"><span class="stat-label">Text chars</span><span class="stat-val info" id="orch-chars">0</span></div>
+      <div class="stat"><span class="stat-label">Function call</span><span class="stat-val" id="orch-fc">—</span></div>
+      <div class="divider"></div>
+
+      <label>EVENT LOG</label>
+      <div class="log" id="orch-log"><span class="log-empty">No events yet.</span></div>
+
+      <div class="divider" style="margin-top:8px"></div>
+      <label>LAST INTAKE SUMMARY</label>
+      <div class="log" id="orch-intake" style="min-height:80px;max-height:160px"><span class="log-empty">Not dispatched yet.</span></div>
+    </div>
+  </div>
+
+  <!-- Right: Upload + Audit Status -->
+  <div class="panel">
+    <div class="panel-header">
+      <h2>Upload Asset</h2>
+    </div>
+    <div class="panel-body" style="max-height:50%;overflow-y:auto">
+      <div class="field">
+        <label>IMAGE FILE</label>
+        <input type="file" id="upload-file" accept="image/jpeg,image/png,image/gif,image/webp" onchange="uploadFile(this)" />
+      </div>
+      <div class="stat"><span class="stat-label">File URI</span><span class="stat-val info" id="upload-uri" style="font-size:0.7rem;word-break:break-all;max-width:60%;text-align:right">—</span></div>
+      <div class="stat"><span class="stat-label">MIME type</span><span class="stat-val info" id="upload-mime">—</span></div>
+      <div class="stat"><span class="stat-label">Status</span><span class="stat-val" id="upload-status">—</span></div>
+      <label style="margin-top:6px">RESPONSE LOG</label>
+      <div class="log" id="upload-log" style="min-height:80px;max-height:160px"><span class="log-empty">No upload yet.</span></div>
+    </div>
+
+    <div class="panel-header" style="border-top:1px solid var(--border)">
+      <h2>Audit Job Status</h2>
+    </div>
+    <div class="panel-body">
+      <div class="row">
+        <input id="job-id-input" placeholder="Job ID (UUID)…" />
+        <button onclick="startPolling()">Poll</button>
+        <button class="secondary" onclick="stopPolling()">Stop</button>
+      </div>
+      <div class="row" style="margin-top:6px">
+        <button class="secondary" style="font-size:0.72rem" onclick="triggerAudit()">Trigger background audit with last intake</button>
+      </div>
+
+      <div class="divider"></div>
+      <div class="stat"><span class="stat-label">Status</span><span class="stat-val" id="poll-status">—</span></div>
+      <div class="stat"><span class="stat-label">Poll #</span><span class="stat-val info" id="poll-count">0</span></div>
+      <div class="stat"><span class="stat-label">Elapsed</span><span class="stat-val info" id="poll-elapsed">—</span></div>
+      <div class="stat"><span class="stat-label">Report chars</span><span class="stat-val info" id="poll-chars">—</span></div>
+
+      <div class="divider"></div>
+      <label>POLL LOG</label>
+      <div class="log" id="poll-log"><span class="log-empty">Not polling.</span></div>
+
+      <div class="divider"></div>
+      <label>ERROR DETAIL</label>
+      <div class="log" id="error-detail" style="min-height:60px;max-height:120px"><span class="log-empty">No errors.</span></div>
+    </div>
+  </div>
+</div>
+
+<script>
+// ── State ──────────────────────────────────────────────────────────
+let orchReader = null;
+let pollInterval = null;
+let pollStart = null;
+let pollCount = 0;
+let orchEventCount = 0;
+let orchCharCount = 0;
+let lastIntakeSummary = null;
+let lastFileUri = null;
+let lastMimeType = null;
+let lastJobId = null;
+
+// ── Clock ──────────────────────────────────────────────────────────
+function updateClock() {
+  document.getElementById('clock').textContent = new Date().toLocaleTimeString();
+}
+setInterval(updateClock, 1000);
+updateClock();
+
+// ── Logging helpers ────────────────────────────────────────────────
+function ts() {
+  return new Date().toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' });
+}
+
+function appendEntry(logId, type, body, collapsible = false) {
+  const log = document.getElementById(logId);
+  const empty = log.querySelector('.log-empty');
+  if (empty) empty.remove();
+
+  const entry = document.createElement('div');
+  entry.className = 'entry';
+
+  const bodyStr = typeof body === 'object' ? JSON.stringify(body, null, 2) : String(body);
+  const collapsed = collapsible && bodyStr.length > 200;
+
+  entry.innerHTML = `
+    <span class="entry-time">${ts()}</span>
+    <span class="entry-type type-${type}">${type}</span>
+    <span class="entry-body ${collapsed ? 'collapsed' : ''}">${escHtml(bodyStr)}</span>
+  `;
+
+  if (collapsed) {
+    const bodyEl = entry.querySelector('.entry-body');
+    bodyEl.addEventListener('click', () => bodyEl.classList.toggle('collapsed'));
+  }
+
+  log.appendChild(entry);
+  log.scrollTop = log.scrollHeight;
+}
+
+function escHtml(s) {
+  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+function clearLog(id) {
+  const el = document.getElementById(id);
+  el.innerHTML = '<span class="log-empty">Cleared.</span>';
+}
+
+function clearAll() {
+  ['orch-log','orch-intake','upload-log','poll-log','error-detail'].forEach(clearLog);
+  orchEventCount = 0; orchCharCount = 0;
+  updateOrchStats();
+  document.getElementById('poll-count').textContent = '0';
+  document.getElementById('poll-elapsed').textContent = '—';
+  document.getElementById('poll-chars').textContent = '—';
+  document.getElementById('poll-status').textContent = '—';
+  document.getElementById('poll-status').className = 'stat-val';
+}
+
+function setStat(id, val, cls) {
+  const el = document.getElementById(id);
+  el.textContent = val;
+  if (cls) el.className = `stat-val ${cls}`;
+}
+
+function logError(msg, detail) {
+  appendEntry('error-detail', 'error', `${msg}\n${detail || ''}`, true);
+}
+
+// ── Orchestrator ───────────────────────────────────────────────────
+function updateOrchStats() {
+  document.getElementById('orch-count').textContent = orchEventCount;
+  document.getElementById('orch-chars').textContent = orchCharCount;
+}
+
+async function sendOrchestrator() {
+  if (orchReader) { orchReader.cancel(); orchReader = null; }
+
+  const msg = document.getElementById('orch-msg').value.trim();
+  if (!msg) { alert('Enter a message first'); return; }
+  const assetUrl = document.getElementById('orch-asset-url').value.trim() || undefined;
+  const fileUri = document.getElementById('orch-file-uri').value.trim() || lastFileUri || undefined;
+
+  orchEventCount = 0; orchCharCount = 0;
+  updateOrchStats();
+  setStat('orch-fc', '—');
+  setOrchStatus('connecting…', 'warn');
+
+  const payload = {
+    messages: [{ role: 'user', content: msg }],
+    fileUri,
+    mimeType: lastMimeType || 'image/jpeg',
+    assetUrl,
+  };
+
+  appendEntry('orch-log', 'request', payload, true);
+  document.getElementById('orch-send-btn').disabled = true;
+  document.getElementById('orch-stop-btn').style.display = '';
+
+  try {
+    const res = await fetch('/.netlify/functions/orchestrator', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+
+    appendEntry('orch-log', 'response', `HTTP ${res.status} ${res.statusText} | Content-Type: ${res.headers.get('content-type')}`);
+
+    if (!res.ok) {
+      const errText = await res.text();
+      logError(`HTTP ${res.status}`, errText);
+      setOrchStatus(`error ${res.status}`, 'err');
+      return;
+    }
+
+    setOrchStatus('streaming', 'ok');
+    orchReader = res.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+
+    while (true) {
+      const { done, value } = await orchReader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split('\n');
+      buffer = lines.pop() ?? '';
+
+      for (const line of lines) {
+        if (line.startsWith('data: ')) {
+          orchEventCount++;
+          try {
+            const ev = JSON.parse(line.slice(6));
+            if (ev.type === 'text_delta') {
+              orchCharCount += (ev.text || '').length;
+              appendEntry('orch-log', 'text_delta', ev.text);
+            } else if (ev.type === 'audit_dispatch') {
+              lastIntakeSummary = ev.intakeSummary;
+              setStat('orch-fc', 'dispatch_audit', 'ok');
+              appendEntry('orch-log', 'audit_dispatch', ev.intakeSummary, true);
+              document.getElementById('orch-intake').innerHTML = '';
+              appendEntry('orch-intake', 'info', ev.intakeSummary, false);
+            } else if (ev.type === 'done') {
+              appendEntry('orch-log', 'done', 'Stream complete');
+              setOrchStatus('done', 'ok');
+            } else if (ev.type === 'error') {
+              appendEntry('orch-log', 'error', ev.message);
+              logError('Orchestrator error', ev.message);
+              setOrchStatus('error', 'err');
+            } else {
+              appendEntry('orch-log', ev.type || 'info', JSON.stringify(ev));
+            }
+            updateOrchStats();
+          } catch {
+            appendEntry('orch-log', 'info', `Raw: ${line.slice(6)}`);
+          }
+        } else if (line.startsWith(': ')) {
+          orchEventCount++;
+          appendEntry('orch-log', 'keepalive', line);
+          updateOrchStats();
+        }
+      }
+    }
+    setOrchStatus('finished', 'ok');
+  } catch (err) {
+    logError('Fetch error', err.message || String(err));
+    appendEntry('orch-log', 'error', String(err));
+    setOrchStatus('error', 'err');
+  } finally {
+    orchReader = null;
+    document.getElementById('orch-send-btn').disabled = false;
+    document.getElementById('orch-stop-btn').style.display = 'none';
+  }
+}
+
+function stopOrchestrator() {
+  if (orchReader) { orchReader.cancel(); orchReader = null; }
+  setOrchStatus('stopped', 'warn');
+  document.getElementById('orch-send-btn').disabled = false;
+  document.getElementById('orch-stop-btn').style.display = 'none';
+}
+
+function setOrchStatus(text, cls) {
+  const el = document.getElementById('orch-status');
+  el.textContent = text;
+  el.style.color = cls === 'ok' ? 'var(--green)' : cls === 'err' ? 'var(--red)' : cls === 'warn' ? 'var(--yellow)' : 'var(--muted)';
+}
+
+// ── Upload ─────────────────────────────────────────────────────────
+async function uploadFile(input) {
+  const file = input.files[0];
+  if (!file) return;
+
+  setStat('upload-status', 'uploading…', 'warn');
+  appendEntry('upload-log', 'request', `Uploading ${file.name} (${(file.size/1024).toFixed(1)} KB, ${file.type})`);
+
+  const formData = new FormData();
+  formData.append('file', file);
+
+  try {
+    const res = await fetch('/.netlify/functions/upload-asset', { method: 'POST', body: formData });
+    const data = await res.json();
+    appendEntry('upload-log', res.ok ? 'response' : 'error', data, true);
+
+    if (res.ok) {
+      lastFileUri = data.fileUri;
+      lastMimeType = data.mimeType;
+      setStat('upload-uri', data.fileUri || '—', 'ok');
+      setStat('upload-mime', data.mimeType || '—', 'ok');
+      setStat('upload-status', 'uploaded', 'ok');
+      document.getElementById('orch-file-uri').value = data.fileUri || '';
+    } else {
+      setStat('upload-status', `error ${res.status}`, 'err');
+      logError(`Upload failed ${res.status}`, JSON.stringify(data));
+    }
+  } catch (err) {
+    setStat('upload-status', 'fetch error', 'err');
+    appendEntry('upload-log', 'error', String(err));
+    logError('Upload fetch error', String(err));
+  }
+}
+
+// ── Audit polling ──────────────────────────────────────────────────
+function startPolling() {
+  stopPolling();
+  const jobId = document.getElementById('job-id-input').value.trim();
+  if (!jobId) { alert('Enter a job ID'); return; }
+  lastJobId = jobId;
+  pollCount = 0;
+  pollStart = Date.now();
+  setStat('poll-status', 'polling…', 'warn');
+
+  pollInterval = setInterval(() => pollOnce(jobId), 3000);
+  pollOnce(jobId);
+}
+
+function stopPolling() {
+  if (pollInterval) { clearInterval(pollInterval); pollInterval = null; }
+}
+
+async function pollOnce(jobId) {
+  pollCount++;
+  document.getElementById('poll-count').textContent = pollCount;
+  const elapsed = ((Date.now() - pollStart) / 1000).toFixed(0);
+  document.getElementById('poll-elapsed').textContent = `${elapsed}s`;
+
+  try {
+    const res = await fetch(`/.netlify/functions/report-status?jobId=${encodeURIComponent(jobId)}`);
+    const data = await res.json();
+    appendEntry('poll-log', 'poll', `[${pollCount}] status=${data.status} | ${JSON.stringify(Object.keys(data))}`, false);
+
+    const s = data.status;
+    if (s === 'complete') {
+      setStat('poll-status', 'complete', 'ok');
+      document.getElementById('poll-chars').textContent = (data.report || '').length;
+      appendEntry('poll-log', 'response', `Report received (${(data.report||'').length} chars)`);
+      stopPolling();
+    } else if (s === 'error') {
+      setStat('poll-status', 'error', 'err');
+      logError('Audit agent error', data.error);
+      appendEntry('poll-log', 'error', data.error);
+      stopPolling();
+    } else {
+      setStat('poll-status', `pending (${elapsed}s)`, 'warn');
+    }
+  } catch (err) {
+    appendEntry('poll-log', 'error', `Poll failed: ${err.message}`);
+  }
+}
+
+async function triggerAudit() {
+  if (!lastIntakeSummary) { alert('No intake summary yet — run orchestrator first'); return; }
+  const jobId = crypto.randomUUID();
+  document.getElementById('job-id-input').value = jobId;
+
+  appendEntry('poll-log', 'request', `Triggering audit | jobId=${jobId}`);
+
+  const payload = {
+    intakeSummary: lastIntakeSummary,
+    fileUri: lastFileUri,
+    mimeType: lastMimeType,
+    jobId,
+  };
+
+  try {
+    const res = await fetch('/.netlify/functions/audit-agent-background', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    appendEntry('poll-log', res.status === 202 ? 'response' : 'error', `HTTP ${res.status} — audit ${res.status === 202 ? 'started' : 'FAILED'}`);
+    if (res.status === 202) startPolling();
+  } catch (err) {
+    appendEntry('poll-log', 'error', String(err));
+    logError('Trigger audit error', String(err));
+  }
+}
+</script>
+</body>
+</html>
