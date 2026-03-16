@@ -62,6 +62,7 @@ function AuthenticatedApp() {
   const [reportData, setReportData] = useState<AIOReportData | null>(null);
   const [errorDetail, setErrorDetail] = useState<string | null>(null);
   const [selectedEngines, setSelectedEngines] = useState<EngineId[]>([]);
+  const [queryCount, setQueryCount] = useState(50);
 
   async function authFetch(url: string, options: RequestInit = {}) {
     const token = await getToken();
@@ -82,7 +83,7 @@ function AuthenticatedApp() {
       .catch(() => setUserStatus('active'));
   }, []);
 
-  const DEFAULT_QUERY_COUNT = 50;
+  // queryCount comes from the EngineSelector slider
 
   // ── Scan dispatch handler (called by orchestrator when user confirms) ──
   async function handleScanDispatch(config: ScanDispatchConfig, sessionId: string, messages: { role: string; content: string }[]) {
@@ -90,7 +91,7 @@ function AuthenticatedApp() {
     const resolvedConfig: ScanDispatchConfig = {
       ...config,
       engines: selectedEngines.length > 0 ? selectedEngines : (config.engines?.length ? config.engines : []),
-      query_count: config.query_count || DEFAULT_QUERY_COUNT,
+      query_count: queryCount || 50,
     };
 
     if (!resolvedConfig.engines?.length) {
@@ -358,6 +359,8 @@ function AuthenticatedApp() {
                       authFetch={authFetch}
                       selectedEngines={selectedEngines}
                       onSelectionChange={setSelectedEngines}
+                      queryCount={queryCount}
+                      onQueryCountChange={setQueryCount}
                     />
                   }
                 />

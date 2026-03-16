@@ -168,13 +168,18 @@ async function checkAndTriggerReview(scanId: string, req: Request) {
   const reviewId = `${scanId}_review`;
   await createScanReview(reviewId, scanId);
 
-  // Trigger review background function
+  // Trigger review background function — MUST await so the request is sent
   const baseUrl = new URL(req.url);
   const origin = `${baseUrl.protocol}//${baseUrl.host}`;
 
-  fetch(`${origin}/.netlify/functions/review-background`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ scanId }),
-  }).catch(err => console.warn('Failed to trigger review:', err));
+  try {
+    const reviewResp = await fetch(`${origin}/.netlify/functions/review-background`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ scanId }),
+    });
+    console.log(`[synthesize] Review trigger response: ${reviewResp.status}`);
+  } catch (err) {
+    console.warn('Failed to trigger review:', err);
+  }
 }

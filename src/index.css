@@ -582,6 +582,74 @@ body {
   letter-spacing: 0.5px;
 }
 
+/* ── Query Count Controls ── */
+
+.engine-selector__query-count {
+  padding: 6px 12px 10px;
+  border-top: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.engine-selector__qc-label {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--text);
+  white-space: nowrap;
+}
+
+.engine-selector__qc-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+  min-width: 160px;
+}
+
+.engine-selector__slider {
+  flex: 1;
+  height: 4px;
+  -webkit-appearance: none;
+  appearance: none;
+  background: var(--border);
+  border-radius: 2px;
+  outline: none;
+  cursor: pointer;
+}
+
+.engine-selector__slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--accent);
+  cursor: pointer;
+}
+
+.engine-selector__qc-input {
+  width: 48px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--text);
+  font-size: 0.75rem;
+  text-align: center;
+  padding: 3px;
+  outline: none;
+}
+
+.engine-selector__qc-input:focus {
+  border-color: var(--accent);
+}
+
+.engine-selector__qc-total {
+  font-size: 0.7rem;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
 .chat-input-area {
   border-top: 1px solid var(--border);
   padding: 16px 24px;

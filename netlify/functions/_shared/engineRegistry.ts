@@ -18,6 +18,8 @@ export interface EngineConfig {
   enabled: boolean;              // whether this engine is currently available
 }
 
+// Each engine gets its own env var so we control availability per-version.
+// To add a key: netlify env:set CHATGPT_FREE_API_KEY sk-...
 export const ENGINE_REGISTRY: Record<EngineId, EngineConfig> = {
   chatgpt_free: {
     id: 'chatgpt_free',
@@ -30,7 +32,7 @@ export const ENGINE_REGISTRY: Record<EngineId, EngineConfig> = {
     icon: 'openai',
     maxConcurrency: 3,
     rateLimitPerMin: 60,
-    apiKeyEnvVar: 'OPENAI_API_KEY',
+    apiKeyEnvVar: 'CHATGPT_FREE_API_KEY',
     enabled: true,
   },
   chatgpt_pro: {
@@ -44,7 +46,7 @@ export const ENGINE_REGISTRY: Record<EngineId, EngineConfig> = {
     icon: 'openai',
     maxConcurrency: 3,
     rateLimitPerMin: 40,
-    apiKeyEnvVar: 'OPENAI_API_KEY',
+    apiKeyEnvVar: 'CHATGPT_PRO_API_KEY',
     enabled: true,
   },
   gemini_free: {
@@ -58,7 +60,7 @@ export const ENGINE_REGISTRY: Record<EngineId, EngineConfig> = {
     icon: 'gemini',
     maxConcurrency: 5,
     rateLimitPerMin: 60,
-    apiKeyEnvVar: 'GEMINI_API_KEY',
+    apiKeyEnvVar: 'GEMINI_FREE_API_KEY',
     enabled: true,
   },
   gemini_pro: {
@@ -72,7 +74,7 @@ export const ENGINE_REGISTRY: Record<EngineId, EngineConfig> = {
     icon: 'gemini',
     maxConcurrency: 3,
     rateLimitPerMin: 30,
-    apiKeyEnvVar: 'GEMINI_API_KEY',
+    apiKeyEnvVar: 'GEMINI_PRO_API_KEY',
     enabled: true,
   },
   claude_free: {
@@ -86,7 +88,7 @@ export const ENGINE_REGISTRY: Record<EngineId, EngineConfig> = {
     icon: 'claude',
     maxConcurrency: 3,
     rateLimitPerMin: 50,
-    apiKeyEnvVar: 'ANTHROPIC_API_KEY',
+    apiKeyEnvVar: 'CLAUDE_FREE_API_KEY',
     enabled: true,
   },
   claude_pro: {
@@ -100,7 +102,7 @@ export const ENGINE_REGISTRY: Record<EngineId, EngineConfig> = {
     icon: 'claude',
     maxConcurrency: 3,
     rateLimitPerMin: 30,
-    apiKeyEnvVar: 'ANTHROPIC_API_KEY',
+    apiKeyEnvVar: 'CLAUDE_PRO_API_KEY',
     enabled: true,
   },
   grok_free: {
@@ -114,7 +116,7 @@ export const ENGINE_REGISTRY: Record<EngineId, EngineConfig> = {
     icon: 'grok',
     maxConcurrency: 3,
     rateLimitPerMin: 30,
-    apiKeyEnvVar: 'XAI_API_KEY',
+    apiKeyEnvVar: 'GROK_FREE_API_KEY',
     enabled: true,
   },
   grok_pro: {
@@ -128,7 +130,7 @@ export const ENGINE_REGISTRY: Record<EngineId, EngineConfig> = {
     icon: 'grok',
     maxConcurrency: 3,
     rateLimitPerMin: 20,
-    apiKeyEnvVar: 'XAI_API_KEY',
+    apiKeyEnvVar: 'GROK_PRO_API_KEY',
     enabled: true,
   },
   perplexity: {
@@ -149,28 +151,28 @@ export const ENGINE_REGISTRY: Record<EngineId, EngineConfig> = {
     id: 'copilot',
     name: 'Microsoft Copilot',
     shortName: 'Copilot',
-    provider: 'openai',           // Azure OpenAI compatible
+    provider: 'openai',
     tier: 'pro',
     model: 'gpt-4o',
     color: '#7B83EB',
     icon: 'copilot',
     maxConcurrency: 3,
     rateLimitPerMin: 30,
-    apiKeyEnvVar: 'AZURE_OPENAI_API_KEY',
-    enabled: false,               // requires Azure setup
+    apiKeyEnvVar: 'COPILOT_API_KEY',
+    enabled: false,
   },
   meta_ai: {
     id: 'meta_ai',
     name: 'Meta AI (Llama)',
     shortName: 'Meta AI',
-    provider: 'together',         // Together AI hosts Llama
+    provider: 'together',
     tier: 'free',
     model: 'meta-llama/Llama-3.3-70B-Instruct-Turbo',
     color: '#0668E1',
     icon: 'meta',
     maxConcurrency: 3,
     rateLimitPerMin: 30,
-    apiKeyEnvVar: 'TOGETHER_API_KEY',
+    apiKeyEnvVar: 'META_AI_API_KEY',
     enabled: true,
   },
   google_sge: {
@@ -179,12 +181,12 @@ export const ENGINE_REGISTRY: Record<EngineId, EngineConfig> = {
     shortName: 'Google SGE',
     provider: 'google_search',
     tier: 'pro',
-    model: 'gemini-2.0-flash',   // used with search grounding
+    model: 'gemini-2.0-flash',
     color: '#EA4335',
     icon: 'google',
     maxConcurrency: 2,
     rateLimitPerMin: 15,
-    apiKeyEnvVar: 'GEMINI_API_KEY',
+    apiKeyEnvVar: 'GOOGLE_SGE_API_KEY',
     enabled: true,
   },
 };

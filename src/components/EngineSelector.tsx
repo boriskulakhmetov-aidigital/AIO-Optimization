@@ -10,15 +10,18 @@ interface EngineAvailability {
   tier: 'free' | 'pro';
   color: string;
   available: boolean;
+  reason?: 'no_key' | 'pro_only';
 }
 
 interface Props {
   authFetch: (url: string, options?: RequestInit) => Promise<Response>;
   selectedEngines: EngineId[];
   onSelectionChange: (engines: EngineId[]) => void;
+  queryCount: number;
+  onQueryCountChange: (count: number) => void;
 }
 
-export function EngineSelector({ authFetch, selectedEngines, onSelectionChange }: Props) {
+export function EngineSelector({ authFetch, selectedEngines, onSelectionChange, queryCount, onQueryCountChange }: Props) {
   const [engines, setEngines] = useState<EngineAvailability[] | null>(null);
   const [collapsed, setCollapsed] = useState(false);
 
@@ -98,7 +101,7 @@ export function EngineSelector({ authFetch, selectedEngines, onSelectionChange }
                   <label
                     key={engine.id}
                     className={`engine-chip ${isAvailable ? '' : 'engine-chip--disabled'} ${isSelected && isAvailable ? 'engine-chip--selected' : ''}`}
-                    title={isAvailable ? meta?.name ?? engine.id : `${meta?.name ?? engine.id} — API key not configured`}
+                    title={isAvailable ? meta?.name ?? engine.id : engine.reason === 'pro_only' ? `${meta?.name ?? engine.id} — upgrade to access` : `${meta?.name ?? engine.id} — API key not configured`}
                   >
                     <input
                       type="checkbox"
@@ -115,7 +118,9 @@ export function EngineSelector({ authFetch, selectedEngines, onSelectionChange }
                       {meta?.shortName ?? engine.shortName}
                     </span>
                     {!isAvailable && (
-                      <span className="engine-chip__lock" title="API key not configured">&#128274;</span>
+                      <span className="engine-chip__lock" title={engine.reason === 'pro_only' ? 'Upgrade required' : 'Not connected'}>
+                        {engine.reason === 'pro_only' ? '\u2B50' : '\u{1F512}'}
+                      </span>
                     )}
                     {engine.tier === 'pro' && isAvailable && (
                       <span className="engine-chip__tier">PRO</span>
@@ -125,6 +130,41 @@ export function EngineSelector({ authFetch, selectedEngines, onSelectionChange }
               })}
             </div>
           ))}
+        </div>
+      )}
+
+      {/* Query count slider */}
+      {!collapsed && (
+        <div className="engine-selector__query-count">
+          <label className="engine-selector__qc-label">
+            Queries per engine
+          </label>
+          <div className="engine-selector__qc-row">
+            <input
+              type="range"
+              min={10}
+              max={100}
+              step={10}
+              value={queryCount}
+              onChange={e => onQueryCountChange(Number(e.target.value))}
+              className="engine-selector__slider"
+            />
+            <input
+              type="number"
+              min={10}
+              max={100}
+              step={10}
+              value={queryCount}
+              onChange={e => {
+                const v = Math.max(10, Math.min(100, Number(e.target.value) || 50));
+                onQueryCountChange(v);
+              }}
+              className="engine-selector__qc-input"
+            />
+          </div>
+          <span className="engine-selector__qc-total">
+            {selectedCount * queryCount} total queries across {selectedCount} engine{selectedCount !== 1 ? 's' : ''}
+          </span>
         </div>
       )}
     </div>

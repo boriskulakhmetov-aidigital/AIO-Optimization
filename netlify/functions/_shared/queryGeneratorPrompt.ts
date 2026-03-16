@@ -40,15 +40,36 @@ export function buildQueryGeneratorPrompt(params: {
 Generate queries across these intent types with the following approximate counts:
 ${distribution}
 
-## Rules for Query Generation
+## CRITICAL: Query Style Rules
 
-1. **Realistic consumer language**: Write queries the way real people talk to AI assistants — natural, conversational, sometimes vague, sometimes specific.
-2. **Vary specificity**: Mix highly specific queries ("best ${conceptCategory} under $40k with AWD") with broad ones ("what ${conceptCategory} should I get?").
-3. **Vary phrasing**: Don't repeat sentence structures. Use questions, commands, comparisons, requests for lists, requests for opinions.
+The goal is to measure whether AI engines **recommend** or **rank** "${conceptName}". Queries MUST be the kind that elicit recommendation lists, rankings, and "best of" answers — not factual/technical questions.
+
+**DO generate queries like:**
+- "What is the best ${conceptCategory} right now?"
+- "Top 5 ${conceptCategory} for [use case]"
+- "Which ${conceptCategory} do you recommend for a family?"
+- "Best ${conceptCategory} under $[price]"
+- "What ${conceptCategory} should I buy in 2026?"
+- "Compare the top ${conceptCategory} options"
+- "[Competitor] vs what else should I consider?"
+- "Most popular ${conceptCategory} this year"
+
+**DO NOT generate queries like:**
+- "Is ${conceptCategory} fragile?" (factual, doesn't elicit recommendations)
+- "How does ${conceptCategory} work?" (educational, not a purchase query)
+- "What is ${conceptCategory} made of?" (technical, won't mention brands)
+
+Every query should be one where a helpful AI assistant would naturally list, rank, or recommend specific ${conceptType === 'product' ? 'products' : conceptType === 'offering' ? 'places/services' : 'options'} by name.
+
+## Additional Rules
+
+1. **Natural consumer language**: Write queries the way real people talk to AI — conversational, sometimes vague, sometimes specific.
+2. **Vary specificity**: Mix broad ("best ${conceptCategory}") with specific ("best ${conceptCategory} under $40k with AWD for a family of 5").
+3. **Vary phrasing**: Use questions, commands ("recommend me"), comparisons ("X vs Y"), requests for lists ("top 10"), and superlatives ("best", "most reliable").
 4. **Include competitor mentions**: Some comparative queries should name specific competitors in the category.
-5. **Geographic/demographic variety**: Some queries should include location, demographic, or situational context.
-6. **Never mention the target by name in queries**: The point is to see if the AI independently recommends/mentions "${conceptName}". The only exception is sentiment/reputation queries that directly ask about the target.
-7. **${conceptType === 'offering' ? 'Include "where to buy" and location-based queries' : conceptType === 'concept' ? 'Include queries that test consumer association with the concept/phrase' : 'Focus on product recommendation and comparison queries'}**.
+5. **Geographic/demographic variety**: Some queries should include location, demographics, budget, or situational context.
+6. **Never mention "${conceptName}" by name** except in sentiment/reputation queries that directly ask about the target.
+7. **${conceptType === 'offering' ? 'Include "where to buy" and "best place for" queries' : conceptType === 'concept' ? 'Include queries that test consumer association with the concept/phrase' : 'Focus on "best", "top", "recommend", and comparison queries'}**.
 
 ## Output Format
 Return a JSON array of objects, each with:
