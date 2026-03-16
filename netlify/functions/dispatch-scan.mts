@@ -4,6 +4,7 @@ import {
   createScan, updateScanStatus, createScanEngine,
   bulkInsertQueries, incrementUserScanCount,
 } from './_shared/db.js';
+import { getEngine } from './_shared/engineRegistry.js';
 import type { ConceptType, EngineId, GeneratedQuery } from './_shared/types.js';
 
 /**
@@ -62,10 +63,23 @@ export default async (req: Request) => {
       messages,
     });
 
-    // 2. Create engine jobs and queries
+    // 2. Filter out engines without API keys
+    const availableEngines = config.engines.filter(eid => {
+      const eng = getEngine(eid);
+      const hasKey = !!process.env[eng.apiKeyEnvVar];
+      if (!hasKey) console.log(`[dispatch-scan] Skipping ${eid}: ${eng.apiKeyEnvVar} not set`);
+      return hasKey;
+    });
+    const skippedEngines = config.engines.filter(eid => !availableEngines.includes(eid));
+
+    if (availableEngines.length === 0) {
+      return Response.json({ error: 'No engines have API keys configured. Please add API keys to Netlify env vars.' }, { status: 400 });
+    }
+
+    // 3. Create engine jobs and queries
     const engineJobIds: Record<string, string> = {};
 
-    for (const engineId of config.engines) {
+    for (const engineId of availableEngines) {
       const engineJobId = `${scanId}_${engineId}`;
       engineJobIds[engineId] = engineJobId;
 
@@ -89,32 +103,30 @@ export default async (req: Request) => {
       await bulkInsertQueries(queryRecords);
     }
 
-    // 3. Set initial progress in Blobs for fast polling
+    // 4. Set initial progress in Blobs for fast polling
     const store = getStore('scan-progress');
     const initialProgress = {
       scan_id: scanId,
       status: 'scanning',
-      engines: config.engines.map(eid => ({
+      engines: availableEngines.map(eid => ({
         engine_id: eid,
         status: 'pending',
         queries_total: queries.length,
         queries_done: 0,
       })),
+      skipped_engines: skippedEngines,
     };
     await store.set(scanId, JSON.stringify(initialProgress));
 
-    // 4. Update scan status to scanning
+    // 5. Update scan status to scanning
     await updateScanStatus(scanId, 'scanning');
 
-    // 5. Fire off background functions — one per engine
-    //    MUST await the fetch calls so the request is sent before this function exits.
-    //    Background functions are fire-and-forget (we don't read the response body),
-    //    but we need to ensure the HTTP request actually leaves.
+    // 6. Fire off background functions — one per engine
     const baseUrl = new URL(req.url);
     const origin = `${baseUrl.protocol}//${baseUrl.host}`;
-    console.log(`[dispatch-scan] Firing ${config.engines.length} background functions from origin: ${origin}`);
+    console.log(`[dispatch-scan] Firing ${availableEngines.length} background functions (skipped: ${skippedEngines.join(', ')})`);
 
-    const triggerPromises = config.engines.map(async (engineId) => {
+    const triggerPromises = availableEngines.map(async (engineId) => {
       try {
         const url = `${origin}/.netlify/functions/scan-engine-background`;
         console.log(`[dispatch-scan] Triggering ${engineId} → ${url}`);
@@ -139,7 +151,7 @@ export default async (req: Request) => {
 
     await Promise.all(triggerPromises);
 
-    // 6. Increment user scan count
+    // 7. Increment user scan count
     await incrementUserScanCount(userId).catch(err =>
       console.warn('incrementUserScanCount failed:', err)
     );
@@ -148,9 +160,10 @@ export default async (req: Request) => {
       ok: true,
       scanId,
       engineJobIds,
-      enginesCount: config.engines.length,
+      enginesCount: availableEngines.length,
       queriesPerEngine: queries.length,
-      totalApiCalls: queries.length * config.engines.length,
+      totalApiCalls: queries.length * availableEngines.length,
+      skippedEngines,
     });
   } catch (err) {
     console.error('dispatch-scan error:', err);

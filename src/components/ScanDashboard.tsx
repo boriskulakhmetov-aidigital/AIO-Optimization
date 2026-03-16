@@ -14,6 +14,7 @@ interface ScanDashboardProps {
 export function ScanDashboard({ conceptName, scanProgress, synthesisStatus, phase }: ScanDashboardProps) {
   const engines = scanProgress?.engines ?? [];
   const feed = scanProgress?.feed ?? [];
+  const skippedEngines = scanProgress?.skipped_engines ?? [];
 
   // Calculate overall progress
   const totalQueries = engines.reduce((s, e) => s + e.queries_total, 0);
@@ -28,7 +29,7 @@ export function ScanDashboard({ conceptName, scanProgress, synthesisStatus, phas
     : 'Error';
 
   const phaseSubtext = phase === 'scanning'
-    ? `Asking ${totalQueries} questions across ${engines.length} AI engines about "${conceptName}"`
+    ? `Asking ${totalQueries} questions across ${engines.length} AI engine${engines.length !== 1 ? 's' : ''} about "${conceptName}"${skippedEngines.length ? ` (${skippedEngines.length} unavailable)` : ''}`
     : phase === 'synthesizing'
     ? 'Each engine is analyzing its responses to compute KPIs'
     : phase === 'reviewing'
@@ -74,6 +75,9 @@ export function ScanDashboard({ conceptName, scanProgress, synthesisStatus, phas
       <div className="scan-dash__grid">
         {engines.map(engine => (
           <EngineCard key={engine.engine_id} engine={engine} phase={phase} />
+        ))}
+        {skippedEngines.map(eid => (
+          <SkippedEngineCard key={eid} engineId={eid as EngineId} />
         ))}
       </div>
 
@@ -157,6 +161,34 @@ function EngineCard({ engine, phase }: { engine: EngineProgress; phase: string }
         {isDone && !isActive && (
           <div className="engine-card__done-badge">&#10003; All queries complete</div>
         )}
+      </div>
+    </div>
+  );
+}
+
+// ── Skipped Engine Card ───────────────────────────────────────────────────────
+
+function SkippedEngineCard({ engineId }: { engineId: EngineId }) {
+  const meta = ENGINE_META[engineId];
+  const color = getEngineColor(engineId);
+
+  return (
+    <div className="engine-card engine-card--skipped">
+      <div className="engine-card__accent" style={{ background: color, opacity: 0.3 }} />
+      <div className="engine-card__body">
+        <div className="engine-card__top">
+          <div className="engine-card__dot" style={{ background: color, opacity: 0.3 }} />
+          <div className="engine-card__info">
+            <span className="engine-card__name" style={{ opacity: 0.5 }}>{meta?.shortName ?? engineId}</span>
+            <span className="engine-card__provider" style={{ opacity: 0.4 }}>{meta?.provider ?? ''}</span>
+          </div>
+          <span className="engine-card__status engine-card__status--skipped">
+            Unavailable
+          </span>
+        </div>
+        <div className="engine-card__skipped-msg">
+          API key not configured
+        </div>
       </div>
     </div>
   );

@@ -26,6 +26,7 @@ export interface ScanProgress {
   status: 'scanning' | 'synthesizing' | 'error';
   engines: EngineProgress[];
   feed: FeedSnippet[];
+  skipped_engines?: string[];
 }
 
 type AuthFetch = (url: string, options?: RequestInit) => Promise<Response>;

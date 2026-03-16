@@ -1722,6 +1722,24 @@ body {
   opacity: 0.5;
 }
 
+.engine-card--skipped {
+  opacity: 0.35;
+  border-style: dashed;
+}
+
+.engine-card__status--skipped {
+  color: var(--muted);
+  font-style: italic;
+  font-size: 0.75rem;
+}
+
+.engine-card__skipped-msg {
+  font-size: 0.7rem;
+  color: var(--muted);
+  padding-top: 0.25rem;
+  font-style: italic;
+}
+
 .engine-card__accent {
   height: 3px;
   width: 100%;
