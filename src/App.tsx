@@ -168,6 +168,7 @@ function AuthenticatedApp() {
   // ── Polling ──
   const { progress: scanProgress } = useScanPoller(
     phase === 'scanning' ? scanId : null,
+    authFetch,
   );
   const { status: synthesisStatus } = useSynthesisPoller(
     phase === 'synthesizing' || phase === 'reviewing' ? scanId : null,

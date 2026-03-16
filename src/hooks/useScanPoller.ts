@@ -28,11 +28,13 @@ export interface ScanProgress {
   feed: FeedSnippet[];
 }
 
+type AuthFetch = (url: string, options?: RequestInit) => Promise<Response>;
+
 /**
  * Polls /scan-status every 2s while scanId is non-null.
  * Returns live engine progress with response snippets.
  */
-export function useScanPoller(scanId: string | null) {
+export function useScanPoller(scanId: string | null, authFetch: AuthFetch) {
   const [progress, setProgress] = useState<ScanProgress | null>(null);
   const [error, setError] = useState<string | null>(null);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -48,7 +50,7 @@ export function useScanPoller(scanId: string | null) {
 
     async function poll() {
       try {
-        const res = await fetch(`/.netlify/functions/scan-status?id=${encodeURIComponent(scanId!)}`);
+        const res = await authFetch(`/.netlify/functions/scan-status?id=${encodeURIComponent(scanId!)}`);
         if (!res.ok) return;
         const data = await res.json() as ScanProgress;
         if (stopped) return;
