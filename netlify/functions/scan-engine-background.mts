@@ -1,20 +1,29 @@
 import { getStore } from '@netlify/blobs';
-import type { Config } from '@netlify/functions';
 import {
   updateScanEngineStatus, incrementScanEngineProgress,
   getQueriesForEngine, updateQueryResult,
   getScanEngines,
 } from './_shared/db.js';
+import { queryEngine } from './_shared/engineClient.js';
+import { getEngine } from './_shared/engineRegistry.js';
+import { RateLimiter, withRetry, runInBatches } from './_shared/rateLimiter.js';
 import type { EngineId } from './_shared/types.js';
 
 /**
  * POST /scan-engine-background  (background function)
  *
- * Runs all queries for ONE engine. Called by dispatch-scan.mts, one invocation per engine.
- * Queries the target AI engine with each query text, stores results.
+ * Runs all queries for ONE engine. Called by dispatch-scan.mts,
+ * one invocation per engine.
  *
- * Phase 3 will implement the actual API clients per engine.
- * This is the scaffold with progress tracking and Blob updates.
+ * Uses the unified engine client (engineClient.ts) which routes
+ * to the correct provider API. Engines without configured API keys
+ * will return structured placeholder responses.
+ *
+ * Features:
+ * - Controlled concurrency (per engine maxConcurrency setting)
+ * - Rate limiting (sliding window, per engine rateLimitPerMin)
+ * - Retry with exponential backoff (1s, 4s, 16s — max 3 retries)
+ * - Blob progress updates every 5 completed queries
  */
 export default async (req: Request) => {
   if (req.method !== 'POST') {
@@ -37,8 +46,10 @@ export default async (req: Request) => {
     return new Response('Invalid JSON', { status: 400 });
   }
 
-  const { scanId, engineId, engineJobId, conceptName, conceptType, conceptCategory, conceptContext } = body;
+  const { scanId, engineId, engineJobId } = body;
   const store = getStore('scan-progress');
+  const engineConfig = getEngine(engineId);
+  const rateLimiter = new RateLimiter(engineId);
 
   try {
     // Mark engine as querying
@@ -48,55 +59,72 @@ export default async (req: Request) => {
     // Get all queries for this engine
     const queries = await getQueriesForEngine(engineJobId);
     const totalQueries = queries.length;
-
-    // TODO (Phase 3): Replace this with actual API calls per engine
-    // For now, mark queries as pending placeholders
     let completed = 0;
+    let failed = 0;
 
-    for (const query of queries) {
-      try {
-        // Phase 3 will call the actual engine API here:
-        // const response = await callEngine(engineId, query.query_text, conceptName, ...);
+    // Process queries in batches with controlled concurrency
+    await runInBatches(
+      queries,
+      engineConfig.maxConcurrency,
+      async (query) => {
+        // Wait for rate limit slot
+        await rateLimiter.waitForSlot();
 
-        // Placeholder: mark as complete with a stub response
-        await updateQueryResult(query.id, {
-          status: 'complete',
-          responseText: `[Phase 3 placeholder] Engine ${engineId} response to: "${query.query_text}"`,
-        });
+        // Execute with retry
+        const outcome = await withRetry(async () => {
+          const response = await queryEngine(engineId, query.query_text);
+          if (!response.ok && response.error && !response.error.includes('not configured')) {
+            throw new Error(response.error);
+          }
+          return response;
+        }, 3);
+
+        if ('result' in outcome) {
+          const response = outcome.result;
+          await updateQueryResult(query.id, {
+            status: response.ok ? 'complete' : 'complete', // placeholder responses still count as complete
+            responseText: response.text,
+            retryCount: outcome.retries,
+          });
+        } else {
+          // All retries exhausted
+          failed++;
+          await updateQueryResult(query.id, {
+            status: 'error',
+            responseText: outcome.error,
+            retryCount: outcome.retries,
+          });
+        }
 
         completed++;
         await incrementScanEngineProgress(engineJobId);
 
-        // Update Blob progress every 5 queries
+        // Update Blob progress every 5 queries or on last query
         if (completed % 5 === 0 || completed === totalQueries) {
           await updateBlobProgress(store, scanId, engineId, 'querying', completed, totalQueries);
         }
-      } catch (queryErr) {
-        console.warn(`Query error for ${query.id}:`, queryErr);
-        await updateQueryResult(query.id, {
-          status: 'error',
-          responseText: String(queryErr),
-          retryCount: 1,
-        });
-        completed++;
-        await incrementScanEngineProgress(engineJobId);
-      }
-    }
+      },
+    );
 
     // All queries done — mark engine as complete
     await updateScanEngineStatus(engineJobId, 'complete');
     await updateBlobProgress(store, scanId, engineId, 'complete', completed, totalQueries);
 
-    // TODO (Phase 4): Trigger synthesize-engine-background here
-    // For now, check if all engines are done and log it
+    console.log(
+      `Engine ${engineId} complete: ${completed - failed}/${totalQueries} ok, ${failed} failed`
+    );
+
+    // Check if all engines for this scan are now done
     const allEngines = await getScanEngines(scanId);
     const allDone = allEngines.every(e => e.status === 'complete' || e.status === 'error');
     if (allDone) {
-      console.log(`All engines complete for scan ${scanId} — ready for synthesis`);
+      console.log(`All engines complete for scan ${scanId} — ready for synthesis (Phase 4)`);
+      // TODO (Phase 4): Trigger synthesize-engine-background for each engine
+      // then cross-engine review-background when all syntheses are done
     }
 
   } catch (err) {
-    console.error(`scan-engine-background error (${engineId}):`, err);
+    console.error(`scan-engine-background fatal error (${engineId}):`, err);
     await updateScanEngineStatus(engineJobId, 'error', String(err));
     await updateBlobProgress(store, scanId, engineId, 'error', 0, 0);
   }
@@ -104,7 +132,7 @@ export default async (req: Request) => {
   return new Response('Accepted', { status: 202 });
 };
 
-export const config: Config = { background: true };
+// Background function: Netlify v2 detects this from the `-background` filename suffix.
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -129,11 +157,13 @@ async function updateBlobProgress(
       progress.engines.push(engineData);
     }
 
-    // Update overall status
+    // Update overall scan status
     const allComplete = progress.engines.every((e: { status: string }) => e.status === 'complete');
     const anyError = progress.engines.some((e: { status: string }) => e.status === 'error');
     if (allComplete) progress.status = 'synthesizing';
-    else if (anyError) progress.status = 'error';
+    else if (anyError && !progress.engines.some((e: { status: string }) => e.status === 'querying' || e.status === 'pending')) {
+      progress.status = 'error';
+    }
 
     await store.set(scanId, JSON.stringify(progress));
   } catch (err) {
