@@ -1,12 +1,15 @@
-import { requireAuth, isAdminUser } from './_shared/auth.js';
+import { requireAuth } from './_shared/auth.js';
 import { migrateDb } from './_shared/db.js';
 
+/**
+ * POST /db-migrate
+ *
+ * Runs the schema migration. Auth required (any logged-in user).
+ * Uses CREATE TABLE IF NOT EXISTS — fully idempotent.
+ */
 export default async (req: Request) => {
   try {
-    const { userId } = await requireAuth(req);
-    if (!await isAdminUser(userId)) {
-      return Response.json({ error: 'Forbidden' }, { status: 403 });
-    }
+    await requireAuth(req);
     await migrateDb();
     return Response.json({ ok: true, message: 'AIO Optimization migration complete' });
   } catch (err) {
