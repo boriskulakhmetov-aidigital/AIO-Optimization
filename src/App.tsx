@@ -12,6 +12,8 @@ import { ChatPanel } from './components/ChatPanel';
 import { ScanDashboard } from './components/ScanDashboard';
 import { ScanSidebar } from './components/ScanSidebar';
 import { AdminPanel } from './components/AdminPanel';
+import { AIOReport } from './components/report/AIOReport';
+import type { AIOReportData } from './lib/types';
 
 export default function App() {
   const { isLoaded, isSignedIn } = useAuth();
@@ -56,6 +58,7 @@ function AuthenticatedApp() {
   const [sidebarRefreshKey, setSidebarRefreshKey] = useState(0);
   const [showAdmin, setShowAdmin] = useState(false);
   const [loadingScanId, setLoadingScanId] = useState<string | null>(null);
+  const [reportData, setReportData] = useState<AIOReportData | null>(null);
 
   async function authFetch(url: string, options: RequestInit = {}) {
     const token = await getToken();
@@ -136,6 +139,15 @@ function AuthenticatedApp() {
     if (synthesisStatus.phase === 'reviewing' && phase === 'synthesizing') {
       setPhase('reviewing');
     } else if (synthesisStatus.phase === 'complete' && (phase === 'synthesizing' || phase === 'reviewing')) {
+      // Fetch the full report data
+      if (scanId) {
+        authFetch(`/.netlify/functions/get-scan?id=${encodeURIComponent(scanId)}`)
+          .then(r => r.json())
+          .then(data => {
+            if (data.scan?.report_data) setReportData(data.scan.report_data as AIOReportData);
+          })
+          .catch(console.warn);
+      }
       setPhase('report_ready');
       setScanCount(c => c + 1);
       setSidebarRefreshKey(k => k + 1);
@@ -157,6 +169,7 @@ function AuthenticatedApp() {
     setPhase('chat');
     setScanId(null);
     setConceptName('');
+    setReportData(null);
     resetOrchestrator();
   }
 
@@ -171,8 +184,10 @@ function AuthenticatedApp() {
 
       setScanId(scan.id);
       setConceptName(scan.concept_name ?? '');
+      setReportData(null);
 
       if (scan.report_data) {
+        setReportData(scan.report_data as AIOReportData);
         setPhase('report_ready');
       } else if (scan.status === 'complete' || scan.status === 'reviewing') {
         setPhase('reviewing');
@@ -293,13 +308,24 @@ function AuthenticatedApp() {
                 />
               )}
 
-              {phase === 'report_ready' && (
-                <ReportReadyPlaceholder
+              {phase === 'report_ready' && reportData && (
+                <AIOReport
+                  data={reportData}
                   conceptName={conceptName}
-                  scanId={scanId}
                   onNewScan={handleNewScan}
-                  authFetch={authFetch}
                 />
+              )}
+
+              {phase === 'report_ready' && !reportData && (
+                <div className="report-ready">
+                  <div className="report-ready__header">
+                    <div className="scan-dash__spinner" />
+                    <div>
+                      <h2 className="report-ready__title">Loading Report...</h2>
+                      <p className="report-ready__sub">Fetching analysis for &ldquo;{conceptName}&rdquo;</p>
+                    </div>
+                  </div>
+                </div>
               )}
 
               {phase === 'error' && (
@@ -312,83 +338,6 @@ function AuthenticatedApp() {
           )}
         </main>
       </div>
-    </div>
-  );
-}
-
-// ── Report Ready (placeholder — Phase 6 will build the full report viewer) ───
-
-function ReportReadyPlaceholder({ conceptName, scanId, onNewScan, authFetch }: {
-  conceptName: string;
-  scanId: string | null;
-  onNewScan: () => void;
-  authFetch: (url: string, options?: RequestInit) => Promise<Response>;
-}) {
-  const [report, setReport] = useState<Record<string, unknown> | null>(null);
-
-  useEffect(() => {
-    if (!scanId) return;
-    authFetch(`/.netlify/functions/get-scan?id=${encodeURIComponent(scanId)}`)
-      .then(r => r.json())
-      .then(data => {
-        if (data.scan?.report_data) setReport(data.scan.report_data);
-      })
-      .catch(console.warn);
-  }, [scanId]);
-
-  return (
-    <div className="report-ready">
-      <div className="report-ready__header">
-        <span className="report-ready__check">&#10003;</span>
-        <div>
-          <h2 className="report-ready__title">Analysis Complete</h2>
-          <p className="report-ready__sub">
-            AI Search Optimization report for &ldquo;{conceptName}&rdquo; is ready.
-          </p>
-        </div>
-      </div>
-
-      {report && (
-        <div className="report-ready__summary">
-          <ReportKPICards report={report} />
-          {(report as { executive_summary?: string }).executive_summary && (
-            <div className="report-ready__exec">
-              <h3>Executive Summary</h3>
-              <p>{(report as { executive_summary?: string }).executive_summary}</p>
-            </div>
-          )}
-        </div>
-      )}
-
-      <div className="report-ready__actions">
-        <button className="btn-primary" onClick={onNewScan}>New Scan</button>
-      </div>
-    </div>
-  );
-}
-
-function ReportKPICards({ report }: { report: Record<string, unknown> }) {
-  const kpis = report.overall_kpis as Record<string, number> | undefined;
-  const review = report.cross_engine_review as Record<string, unknown> | undefined;
-  if (!kpis && !review) return null;
-
-  const cards = [
-    { label: 'AI Share of Voice', value: kpis?.overall_ai_sov ?? (review as Record<string, number> | undefined)?.overall_ai_sov, suffix: '%' },
-    { label: 'First Position Rate', value: kpis?.overall_first_position_rate ?? (review as Record<string, number> | undefined)?.overall_first_position_rate, suffix: '%' },
-    { label: 'Net Sentiment', value: kpis?.overall_net_sentiment ?? (review as Record<string, number> | undefined)?.overall_net_sentiment, suffix: '' },
-    { label: 'Engine Consistency', value: (review as Record<string, number> | undefined)?.engine_consistency, suffix: '' },
-  ].filter(c => c.value != null);
-
-  return (
-    <div className="kpi-cards">
-      {cards.map(card => (
-        <div key={card.label} className="kpi-card">
-          <span className="kpi-card__value">
-            {typeof card.value === 'number' ? card.value.toFixed(1) : card.value}{card.suffix}
-          </span>
-          <span className="kpi-card__label">{card.label}</span>
-        </div>
-      ))}
     </div>
   );
 }

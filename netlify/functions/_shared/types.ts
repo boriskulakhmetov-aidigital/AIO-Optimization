@@ -107,6 +107,9 @@ export interface EngineSynthesis {
   summary_text: string;
 }
 
+export type AwarenessLabel = 'Excellent' | 'Good' | 'Moderate' | 'Low' | 'Minimal';
+export type InvestmentLevel = 'Maintain' | 'Optimize' | 'Invest' | 'Priority Investment' | 'Critical Gap';
+
 export interface EngineRanking {
   engine_id: EngineId;
   engine_name: string;
@@ -114,6 +117,8 @@ export interface EngineRanking {
   rsi: number;
   net_sentiment: number;
   overall_grade: 'A' | 'B' | 'C' | 'D' | 'F';
+  awareness_label: AwarenessLabel;
+  investment_level: InvestmentLevel;
 }
 
 export interface ActionItem {
@@ -133,8 +138,8 @@ export interface CrossEngineReview {
   engine_rankings: EngineRanking[];
 
   competitive_landscape: string;
-  strongest_engine: EngineId;
-  weakest_engine: EngineId;
+  most_aware_engine: EngineId;
+  highest_investment_engine: EngineId;
   biggest_gap: string;
 
   action_items: ActionItem[];
