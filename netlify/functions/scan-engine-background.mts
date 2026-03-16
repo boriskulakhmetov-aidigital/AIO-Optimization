@@ -47,6 +47,7 @@ export default async (req: Request) => {
   }
 
   const { scanId, engineId, engineJobId } = body;
+  console.log(`[scan-engine-background] Starting engine=${engineId} scan=${scanId} job=${engineJobId}`);
   const store = getStore('scan-progress');
   const engineConfig = getEngine(engineId);
   const rateLimiter = new RateLimiter(engineId);

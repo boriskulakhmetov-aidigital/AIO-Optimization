@@ -107,24 +107,37 @@ export default async (req: Request) => {
     await updateScanStatus(scanId, 'scanning');
 
     // 5. Fire off background functions — one per engine
+    //    MUST await the fetch calls so the request is sent before this function exits.
+    //    Background functions are fire-and-forget (we don't read the response body),
+    //    but we need to ensure the HTTP request actually leaves.
     const baseUrl = new URL(req.url);
     const origin = `${baseUrl.protocol}//${baseUrl.host}`;
+    console.log(`[dispatch-scan] Firing ${config.engines.length} background functions from origin: ${origin}`);
 
-    for (const engineId of config.engines) {
-      fetch(`${origin}/.netlify/functions/scan-engine-background`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          scanId,
-          engineId,
-          engineJobId: engineJobIds[engineId],
-          conceptName: config.concept_name,
-          conceptType: config.concept_type,
-          conceptCategory: config.concept_category,
-          conceptContext: config.concept_context,
-        }),
-      }).catch(err => console.warn(`Failed to trigger engine ${engineId}:`, err));
-    }
+    const triggerPromises = config.engines.map(async (engineId) => {
+      try {
+        const url = `${origin}/.netlify/functions/scan-engine-background`;
+        console.log(`[dispatch-scan] Triggering ${engineId} → ${url}`);
+        const resp = await fetch(url, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            scanId,
+            engineId,
+            engineJobId: engineJobIds[engineId],
+            conceptName: config.concept_name,
+            conceptType: config.concept_type,
+            conceptCategory: config.concept_category,
+            conceptContext: config.concept_context,
+          }),
+        });
+        console.log(`[dispatch-scan] ${engineId} trigger response: ${resp.status}`);
+      } catch (err) {
+        console.warn(`[dispatch-scan] Failed to trigger engine ${engineId}:`, err);
+      }
+    });
+
+    await Promise.all(triggerPromises);
 
     // 6. Increment user scan count
     await incrementUserScanCount(userId).catch(err =>
