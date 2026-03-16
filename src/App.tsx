@@ -96,8 +96,6 @@ function AuthenticatedApp() {
     setConceptName(resolvedConfig.concept_name);
     setScanId(sessionId);
     setPhase('generating');
-    setSidebarRefreshKey(k => k + 1);
-
     setErrorDetail(null);
 
     try {
@@ -155,6 +153,8 @@ function AuthenticatedApp() {
       }
       const dispatchData = await dispatchRes.json();
       console.log('[AIO] Step 2 complete:', dispatchData);
+      // Scan record now exists in DB — refresh sidebar
+      setSidebarRefreshKey(k => k + 1);
     } catch (err) {
       console.error('[AIO] Dispatch error:', err);
       setErrorDetail(`Error: ${err instanceof Error ? err.message : String(err)}`);
