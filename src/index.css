@@ -883,6 +883,35 @@ body {
 .report-content hr, .report-body hr { border: none; border-top: 1px solid var(--border); margin: 24px 0; }
 .report-content blockquote, .report-body blockquote { border-left: 3px solid var(--accent); padding: 8px 16px; background: var(--accent-dim); border-radius: 0 var(--radius-sm) var(--radius-sm) 0; margin: 12px 0; }
 
+/* ── Generating State ────────────────────────────── */
+.generating-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  padding: 80px 24px;
+  text-align: center;
+}
+.generating-state__spinner {
+  width: 40px;
+  height: 40px;
+  border: 3px solid var(--border);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+.generating-state__title {
+  font-size: 1.25rem;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+.generating-state__sub {
+  color: var(--text-secondary);
+  max-width: 420px;
+  line-height: 1.5;
+}
+
 /* ── Error Page ──────────────────────────────────── */
 .error-page {
   display: flex;

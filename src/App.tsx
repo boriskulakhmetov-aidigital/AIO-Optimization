@@ -80,29 +80,56 @@ function AuthenticatedApp() {
   }, []);
 
   // ── Scan dispatch handler (called by orchestrator when user confirms) ──
-  async function handleScanDispatch(config: ScanDispatchConfig, sessionId: string) {
+  async function handleScanDispatch(config: ScanDispatchConfig, sessionId: string, messages: { role: string; content: string }[]) {
     setConceptName(config.concept_name);
     setScanId(sessionId);
-    setPhase('scanning');
+    setPhase('generating');  // show "Generating queries…" state
     setSidebarRefreshKey(k => k + 1);
 
-    // Call dispatch-scan to create scan + fire background engines
     try {
-      const res = await authFetch('/.netlify/functions/dispatch-scan', {
+      // Step 1: Generate queries via Gemini
+      const genRes = await authFetch('/.netlify/functions/generate-queries', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          sessionId,
-          conceptType: config.concept_type,
-          conceptName: config.concept_name,
-          conceptCategory: config.concept_category,
-          conceptContext: config.concept_context,
+          concept_type: config.concept_type,
+          concept_name: config.concept_name,
+          concept_category: config.concept_category,
+          concept_context: config.concept_context,
           engines: config.engines,
-          queryCount: config.query_count,
+          query_count: config.query_count,
         }),
       });
-      if (!res.ok) {
-        const errText = await res.text();
+      if (!genRes.ok) {
+        const errText = await genRes.text();
+        console.error('Generate queries failed:', errText);
+        setPhase('error');
+        return;
+      }
+      const genData = await genRes.json();
+
+      // Step 2: Dispatch scan with generated queries
+      setPhase('scanning');
+
+      const dispatchRes = await authFetch('/.netlify/functions/dispatch-scan', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          scanId: sessionId,
+          config: {
+            concept_type: config.concept_type,
+            concept_name: config.concept_name,
+            concept_category: config.concept_category,
+            concept_context: config.concept_context,
+            engines: config.engines,
+            query_count: config.query_count,
+          },
+          queries: genData.queries,
+          messages: messages.map(m => ({ role: m.role, content: m.content })),
+        }),
+      });
+      if (!dispatchRes.ok) {
+        const errText = await dispatchRes.text();
         console.error('Dispatch scan failed:', errText);
         setPhase('error');
       }
@@ -113,7 +140,7 @@ function AuthenticatedApp() {
   }
 
   const { messages, streaming, error: chatError, sendMessage, reset: resetOrchestrator } =
-    useOrchestrator(handleScanDispatch, authFetch);
+    useOrchestrator(handleScanDispatch);
 
   // ── Polling ──
   const { progress: scanProgress } = useScanPoller(
@@ -297,6 +324,17 @@ function AuthenticatedApp() {
                   error={chatError}
                   onSend={sendMessage}
                 />
+              )}
+
+              {phase === 'generating' && (
+                <div className="generating-state">
+                  <div className="generating-state__spinner" />
+                  <h2 className="generating-state__title">Generating Queries&hellip;</h2>
+                  <p className="generating-state__sub">
+                    Building a diverse set of search queries to test how AI engines perceive
+                    &ldquo;{conceptName}&rdquo;. This takes 10&ndash;20 seconds.
+                  </p>
+                </div>
               )}
 
               {(phase === 'scanning' || phase === 'synthesizing' || phase === 'reviewing') && (

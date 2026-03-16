@@ -17,11 +17,8 @@ interface OrchestratorState {
   error: string | null;
 }
 
-type AuthFetch = (url: string, options?: RequestInit) => Promise<Response>;
-
 export function useOrchestrator(
   onScanDispatch: (config: ScanDispatchConfig, sessionId: string, messages: ChatMessage[]) => void,
-  authFetch: AuthFetch,
 ) {
   const [state, setState] = useState<OrchestratorState>({
     messages: [],
@@ -31,12 +28,10 @@ export function useOrchestrator(
 
   const messagesRef = useRef<ChatMessage[]>([]);
   const sessionIdRef = useRef<string>(crypto.randomUUID());
-  const sessionSavedRef = useRef(false);
 
   const reset = useCallback(() => {
     messagesRef.current = [];
     sessionIdRef.current = crypto.randomUUID();
-    sessionSavedRef.current = false;
     setState({ messages: [], streaming: false, error: null });
   }, []);
 
@@ -64,16 +59,6 @@ export function useOrchestrator(
     addMessage(userMsg);
     setState(s => ({ ...s, streaming: true, error: null }));
 
-    // Save scan session on first message
-    if (!sessionSavedRef.current) {
-      sessionSavedRef.current = true;
-      authFetch('/.netlify/functions/save-scan', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'create', id: sessionIdRef.current, status: 'chatting' }),
-      }).catch(console.warn);
-    }
-
     try {
       const res = await fetch('/.netlify/functions/orchestrator', {
         method: 'POST',
@@ -99,16 +84,7 @@ export function useOrchestrator(
         }
       }
 
-      // Persist messages after each exchange
-      authFetch('/.netlify/functions/save-scan', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          action: 'update_messages',
-          id: sessionIdRef.current,
-          messages: messagesRef.current.map(m => ({ role: m.role, content: m.content })),
-        }),
-      }).catch(console.warn);
+      // Messages are passed to dispatch-scan when scan starts — no need to persist during chat
 
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Something went wrong';
