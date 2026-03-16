@@ -160,6 +160,11 @@ body {
 }
 .sidebar__toggle:hover { background: var(--surface-2); color: var(--text); }
 
+.sidebar__top {
+  padding: 12px 8px 4px;
+  flex-shrink: 0;
+}
+
 .sidebar__new-btn {
   flex: 1;
   background: var(--accent-dim);
@@ -200,36 +205,91 @@ body {
   padding: 10px 8px 4px;
 }
 
-.sidebar__item {
-  width: 100%;
-  background: none;
-  border: none;
+/* ── Scan Item ─────────────────────────────────── */
+.scan-item {
   border-radius: 8px;
-  color: var(--text);
   cursor: pointer;
+  padding: 8px 10px;
+  transition: background 0.15s;
+  position: relative;
+}
+
+.scan-item:hover { background: var(--surface-2); }
+.scan-item--active { background: var(--accent-dim); border: 1px solid var(--accent-border); }
+
+.scan-item__row {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.scan-item__row .status-dot {
+  margin-top: 5px;
+  flex-shrink: 0;
+}
+
+.scan-item__text {
+  flex: 1;
+  min-width: 0;
   display: flex;
   flex-direction: column;
-  align-items: flex-start;
   gap: 2px;
-  padding: 7px 10px;
-  text-align: left;
 }
-.sidebar__item:hover { background: var(--surface-2); }
-.sidebar__item--active { background: var(--accent-dim); border: 1px solid var(--accent-border); }
 
-.sidebar__item-brand {
-  font-size: 0.88rem;
+.scan-item__name {
+  font-size: 0.84rem;
   font-weight: 500;
+  color: var(--text);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  max-width: 100%;
 }
 
-.sidebar__item-meta {
-  font-size: 0.75rem;
+.scan-item__meta {
+  display: flex;
+  gap: 6px;
+  font-size: 0.7rem;
   color: var(--text-muted);
+  align-items: center;
 }
+
+.scan-item__badge {
+  font-size: 0.6rem;
+  font-weight: 600;
+  padding: 1px 5px;
+  border-radius: 3px;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+}
+
+.scan-item__badge--scanning,
+.scan-item__badge--synthesizing,
+.scan-item__badge--reviewing {
+  background: var(--accent-dim);
+  color: var(--accent);
+}
+
+.scan-item__badge--error {
+  background: color-mix(in srgb, var(--error) 15%, transparent);
+  color: var(--error);
+}
+
+.scan-item__delete {
+  background: none;
+  border: none;
+  color: var(--muted);
+  font-size: 1.1rem;
+  cursor: pointer;
+  padding: 0 2px;
+  line-height: 1;
+  opacity: 0;
+  transition: opacity 0.15s, color 0.15s;
+  flex-shrink: 0;
+  margin-top: 1px;
+}
+
+.scan-item:hover .scan-item__delete { opacity: 0.6; }
+.scan-item__delete:hover { color: var(--error); opacity: 1 !important; }
 
 /* ── Legacy Layout (kept for safety) ────────────── */
 .app {

@@ -23,7 +23,6 @@ export function ScanSidebar({
   onSelectScan, onNewScan, onDeleteScan, authFetch,
 }: ScanSidebarProps) {
   const [scans, setScans] = useState<ScanItem[]>([]);
-  const [search, setSearch] = useState('');
 
   useEffect(() => {
     authFetch('/.netlify/functions/list-scans')
@@ -32,55 +31,56 @@ export function ScanSidebar({
       .catch(console.warn);
   }, [refreshKey]);
 
-  const filtered = scans.filter(s =>
-    s.concept_name?.toLowerCase().includes(search.toLowerCase())
-  );
-
   return (
     <aside className="sidebar">
       <div className="sidebar__top">
         <button className="sidebar__new-btn" onClick={onNewScan}>
           + New Scan
         </button>
-        <input
-          className="sidebar__search"
-          type="text"
-          placeholder="Search scans..."
-          value={search}
-          onChange={e => setSearch(e.target.value)}
-        />
       </div>
       <div className="sidebar__list">
-        {filtered.length === 0 && (
+        {scans.length === 0 && (
           <div className="sidebar__empty">No scans yet</div>
         )}
-        {filtered.map(scan => {
+        {scans.map(scan => {
           const isCurrent = scan.id === currentScanId;
           const isLoading = scan.id === loadingScanId;
+          const statusLabel = scan.status === 'complete' ? 'Done'
+            : scan.status === 'error' ? 'Error'
+            : scan.status === 'scanning' ? 'Scanning'
+            : scan.status === 'synthesizing' ? 'Analyzing'
+            : scan.status === 'reviewing' ? 'Reviewing'
+            : '';
+
           return (
             <div
               key={scan.id}
-              className={`sidebar__item ${isCurrent ? 'sidebar__item--active' : ''}`}
+              className={`scan-item ${isCurrent ? 'scan-item--active' : ''}`}
               onClick={() => onSelectScan(scan.id)}
             >
-              <div className="sidebar__item-top">
-                <span className="sidebar__item-name">
-                  {isLoading ? '...' : (scan.concept_name || 'Untitled')}
-                </span>
+              <div className="scan-item__row">
+                <StatusDot status={scan.status} />
+                <div className="scan-item__text">
+                  <span className="scan-item__name">
+                    {isLoading ? 'Loading...' : (scan.concept_name || 'Untitled')}
+                  </span>
+                  <span className="scan-item__meta">
+                    {scan.concept_type && <span>{scan.concept_type}</span>}
+                    <span>{new Date(scan.created_at).toLocaleDateString()}</span>
+                    {statusLabel && scan.status !== 'complete' && (
+                      <span className={`scan-item__badge scan-item__badge--${scan.status}`}>
+                        {statusLabel}
+                      </span>
+                    )}
+                  </span>
+                </div>
                 <button
-                  className="sidebar__item-delete"
+                  className="scan-item__delete"
                   onClick={e => { e.stopPropagation(); onDeleteScan(scan.id); }}
-                  title="Delete"
+                  title="Delete scan"
                 >
                   &times;
                 </button>
-              </div>
-              <div className="sidebar__item-meta">
-                <StatusDot status={scan.status} />
-                <span>{scan.concept_type ?? 'scan'}</span>
-                <span className="sidebar__item-date">
-                  {new Date(scan.created_at).toLocaleDateString()}
-                </span>
               </div>
             </div>
           );

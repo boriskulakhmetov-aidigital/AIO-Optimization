@@ -7,7 +7,7 @@ type Status = typeof STATUSES[number] | 'admin';
 interface Account {
   domain: string;
   user_count: number;
-  audit_count: number;
+  scan_count: number;
   last_activity: string;
 }
 
@@ -15,22 +15,22 @@ interface UserRow {
   user_id: string;
   user_email: string;
   status: Status;
-  audit_count: number;
+  scan_count: number;
   last_activity: string;
 }
 
-interface AuditRow {
+interface ScanRow {
   id: string;
-  brand_name: string;
-  asset_type: string;
+  concept_name: string;
+  concept_type: string;
   status: string;
   created_at: string;
   deleted_by_user?: boolean;
 }
 
-interface AuditDetail {
-  report: string | null;
-  brand_name: string;
+interface ScanDetail {
+  report_data: unknown | null;
+  concept_name: string;
   messages: Array<{ role: string; content: string }>;
   status: string;
 }
@@ -57,8 +57,8 @@ export function AdminPanel({ authFetch }: Props) {
   const [selectedDomain, setSelectedDomain] = useState<string | null>(null);
   const [users, setUsers]                   = useState<UserRow[]>([]);
   const [selectedUserId, setSelectedUserId] = useState<string | null>(null);
-  const [userAudits, setUserAudits]         = useState<AuditRow[]>([]);
-  const [auditDetail, setAuditDetail]       = useState<AuditDetail | null>(null);
+  const [userScans, setUserScans]           = useState<ScanRow[]>([]);
+  const [scanDetail, setScanDetail]         = useState<ScanDetail | null>(null);
   const [detailTab, setDetailTab]           = useState<'chat' | 'report'>('report');
   const [loading, setLoading]               = useState(false);
   const [migrateMsg, setMigrateMsg]         = useState('');
@@ -75,32 +75,32 @@ export function AdminPanel({ authFetch }: Props) {
   async function loadUsers(domain: string) {
     setSelectedDomain(domain);
     setSelectedUserId(null);
-    setUserAudits([]);
-    setAuditDetail(null);
+    setUserScans([]);
+    setScanDetail(null);
     const data = await authFetch(
       `/.netlify/functions/admin-accounts?domain=${encodeURIComponent(domain)}`
     ).then(r => r.json());
     setUsers(data.users ?? []);
   }
 
-  async function loadUserAudits(userId: string) {
+  async function loadUserScans(userId: string) {
     setSelectedUserId(userId);
-    setAuditDetail(null);
+    setScanDetail(null);
     const data = await authFetch(
       `/.netlify/functions/admin-accounts?userId=${encodeURIComponent(userId)}`
     ).then(r => r.json());
-    setUserAudits(data.sessions ?? []);
+    setUserScans(data.scans ?? []);
   }
 
-  async function loadAuditDetail(id: string) {
+  async function loadScanDetail(id: string) {
     const data = await authFetch(
-      `/.netlify/functions/get-audit?id=${encodeURIComponent(id)}`
+      `/.netlify/functions/get-scan?id=${encodeURIComponent(id)}`
     ).then(r => r.json());
-    const s = data.session;
+    const s = data.scan;
     if (s) {
-      setAuditDetail({
-        report: s.report ?? null,
-        brand_name: s.brand_name ?? id,
+      setScanDetail({
+        report_data: s.report_data ?? null,
+        concept_name: s.concept_name ?? id,
         messages: Array.isArray(s.messages) ? s.messages : (typeof s.messages === 'string' ? JSON.parse(s.messages) : []),
         status: s.status,
       });
@@ -125,7 +125,7 @@ export function AdminPanel({ authFetch }: Props) {
   }
 
   async function runMigration() {
-    setMigrateMsg('Running…');
+    setMigrateMsg('Running...');
     try {
       const data = await authFetch('/.netlify/functions/db-migrate').then(r => r.json());
       setMigrateMsg(data.message ?? JSON.stringify(data));
@@ -135,31 +135,31 @@ export function AdminPanel({ authFetch }: Props) {
   }
 
   // Detail view
-  if (auditDetail) {
+  if (scanDetail) {
     return (
       <div className="admin">
         <div className="admin__toolbar">
-          <button className="btn-ghost btn-sm" onClick={() => setAuditDetail(null)}>← Back</button>
-          <h2 className="admin__title">{auditDetail.brand_name}</h2>
-          <StatusBadge status={auditDetail.status} />
+          <button className="btn-ghost btn-sm" onClick={() => setScanDetail(null)}>Back</button>
+          <h2 className="admin__title">{scanDetail.concept_name}</h2>
+          <StatusBadge status={scanDetail.status} />
           <div className="admin__tabs">
             <button className={`admin__tab${detailTab === 'report' ? ' admin__tab--active' : ''}`} onClick={() => setDetailTab('report')}>Report</button>
-            <button className={`admin__tab${detailTab === 'chat' ? ' admin__tab--active' : ''}`} onClick={() => setDetailTab('chat')}>Chat Log ({auditDetail.messages.length})</button>
+            <button className={`admin__tab${detailTab === 'chat' ? ' admin__tab--active' : ''}`} onClick={() => setDetailTab('chat')}>Chat ({scanDetail.messages.length})</button>
           </div>
         </div>
 
         {detailTab === 'report' && (
-          auditDetail.report
-            ? <pre className="admin__report">{auditDetail.report}</pre>
-            : <div className="admin__empty admin__empty--center">Report not yet available (status: {auditDetail.status})</div>
+          scanDetail.report_data
+            ? <pre className="admin__report">{JSON.stringify(scanDetail.report_data, null, 2)}</pre>
+            : <div className="admin__empty admin__empty--center">Report not yet available (status: {scanDetail.status})</div>
         )}
 
         {detailTab === 'chat' && (
           <div className="admin__chat">
-            {auditDetail.messages.length === 0 && (
+            {scanDetail.messages.length === 0 && (
               <div className="admin__empty">No chat messages saved.</div>
             )}
-            {auditDetail.messages.map((m, i) => (
+            {scanDetail.messages.map((m, i) => (
               <div key={i} className={`admin__msg admin__msg--${m.role}`}>
                 <span className="admin__msg-role">{m.role === 'user' ? 'User' : 'Agent'}</span>
                 <p className="admin__msg-content">{m.content}</p>
@@ -183,7 +183,7 @@ export function AdminPanel({ authFetch }: Props) {
         {/* Accounts column */}
         <div className="admin__col">
           <div className="admin__col-header">Accounts</div>
-          {loading && <div className="admin__empty">Loading…</div>}
+          {loading && <div className="admin__empty">Loading...</div>}
           {accounts.map(a => (
             <button
               key={a.domain}
@@ -191,7 +191,7 @@ export function AdminPanel({ authFetch }: Props) {
               onClick={() => loadUsers(a.domain)}
             >
               <strong>{a.domain}</strong>
-              <span>{a.user_count} users · {a.audit_count} audits</span>
+              <span>{a.user_count} users / {a.scan_count} scans</span>
             </button>
           ))}
         </div>
@@ -213,11 +213,11 @@ export function AdminPanel({ authFetch }: Props) {
               <div
                 key={u.user_id}
                 className={`admin__row admin__row--user${selectedUserId === u.user_id ? ' admin__row--active' : ''}`}
-                onClick={() => loadUserAudits(u.user_id)}
+                onClick={() => loadUserScans(u.user_id)}
               >
                 <div className="admin__row-main">
                   <strong>{u.user_email}</strong>
-                  <span>{u.audit_count} audits</span>
+                  <span>{u.scan_count} scans</span>
                 </div>
                 <div className="admin__row-controls" onClick={e => e.stopPropagation()}>
                   <StatusSelect value={u.status} onChange={v => setUserStatus(u.user_id, v)} userEmail={u.user_email} />
@@ -227,21 +227,21 @@ export function AdminPanel({ authFetch }: Props) {
           </div>
         )}
 
-        {/* Audits column */}
+        {/* Scans column */}
         {selectedUserId && (
           <div className="admin__col">
-            <div className="admin__col-header">Audits</div>
-            {userAudits.length === 0 && <div className="admin__empty">No audits</div>}
-            {userAudits.map(a => (
+            <div className="admin__col-header">Scans</div>
+            {userScans.length === 0 && <div className="admin__empty">No scans</div>}
+            {userScans.map(s => (
               <button
-                key={a.id}
+                key={s.id}
                 className="admin__row"
-                onClick={() => loadAuditDetail(a.id)}
+                onClick={() => loadScanDetail(s.id)}
               >
-                <strong style={{ opacity: a.deleted_by_user ? 0.4 : 1 }}>
-                  {a.deleted_by_user ? '[deleted] ' : ''}{a.brand_name ?? 'Unnamed'}
+                <strong style={{ opacity: s.deleted_by_user ? 0.4 : 1 }}>
+                  {s.deleted_by_user ? '[deleted] ' : ''}{s.concept_name ?? 'Unnamed'}
                 </strong>
-                <span><StatusBadge status={a.status} /> · {a.asset_type}</span>
+                <span><StatusBadge status={s.status} /> / {s.concept_type}</span>
               </button>
             ))}
           </div>
