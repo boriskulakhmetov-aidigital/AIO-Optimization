@@ -1,5 +1,5 @@
 import { requireAuth, isAdminUser } from './_shared/auth.js';
-import { setSessionShare, adminGetSessionShare } from './_shared/db.js';
+import { setScanShare, adminGetScanShare } from './_shared/db.js';
 
 export default async (req: Request) => {
   const url = new URL(req.url);
@@ -9,19 +9,17 @@ export default async (req: Request) => {
   try {
     const { userId } = await requireAuth(req);
 
-    // GET — fetch current share state (admin can get any session)
     if (req.method === 'GET') {
       const adminAccess = await isAdminUser(userId);
       if (!adminAccess) return Response.json({ error: 'Forbidden' }, { status: 403 });
-      const row = await adminGetSessionShare(id);
+      const row = await adminGetScanShare(id);
       return Response.json(row ?? { share_token: null, is_public: false });
     }
 
-    // POST — toggle share settings (owner only)
     if (req.method === 'POST') {
       const body = await req.json().catch(() => ({}));
       const isPublic = Boolean(body.is_public);
-      const row = await setSessionShare(id, userId, isPublic);
+      const row = await setScanShare(id, userId, isPublic);
       if (!row) return Response.json({ error: 'Not found or not owner' }, { status: 404 });
       return Response.json(row);
     }

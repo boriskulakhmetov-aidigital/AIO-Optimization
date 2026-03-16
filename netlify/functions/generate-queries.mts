@@ -1,0 +1,114 @@
+import { GoogleGenAI } from '@google/genai';
+import { requireAuth } from './_shared/auth.js';
+import { buildQueryGeneratorPrompt } from './_shared/queryGeneratorPrompt.js';
+import type { ConceptType, GeneratedQuery, EngineId } from './_shared/types.js';
+
+/**
+ * POST /generate-queries
+ *
+ * Takes the scan config from the orchestrator and generates ~N queries
+ * using Gemini. Returns the queries grouped by engine (same queries for
+ * all engines, since we're testing how each engine responds to the same prompts).
+ *
+ * This is the "Response Processor" — decoupled from the Orchestrator.
+ * The Orchestrator only collects input; this function builds the query set.
+ */
+export default async (req: Request) => {
+  if (req.method !== 'POST') {
+    return Response.json({ error: 'Method not allowed' }, { status: 405 });
+  }
+
+  try {
+    await requireAuth(req);
+
+    const body = await req.json();
+    const {
+      concept_type,
+      concept_name,
+      concept_category,
+      concept_context,
+      engines,
+      query_count = 100,
+    } = body as {
+      concept_type: ConceptType;
+      concept_name: string;
+      concept_category: string;
+      concept_context?: string;
+      engines: EngineId[];
+      query_count?: number;
+    };
+
+    if (!concept_type || !concept_name || !concept_category) {
+      return Response.json({ error: 'Missing required fields: concept_type, concept_name, concept_category' }, { status: 400 });
+    }
+    if (!engines || engines.length === 0) {
+      return Response.json({ error: 'At least one engine must be selected' }, { status: 400 });
+    }
+
+    const clampedCount = Math.max(20, Math.min(200, query_count));
+
+    // Generate queries using Gemini
+    const prompt = buildQueryGeneratorPrompt({
+      conceptType: concept_type,
+      conceptName: concept_name,
+      conceptCategory: concept_category,
+      conceptContext: concept_context,
+      queryCount: clampedCount,
+    });
+
+    const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY! });
+    const result = await ai.models.generateContent({
+      model: 'gemini-2.0-flash',
+      contents: [{ role: 'user', parts: [{ text: prompt }] }],
+      config: {
+        maxOutputTokens: 8192,
+        temperature: 0.9,  // higher creativity for diverse queries
+        responseMimeType: 'application/json',
+      },
+    });
+
+    const responseText = result.text ?? '';
+
+    // Parse the JSON array of queries
+    let queries: GeneratedQuery[];
+    try {
+      queries = JSON.parse(responseText);
+      if (!Array.isArray(queries)) throw new Error('Response is not an array');
+    } catch {
+      // Try to extract JSON array from the response
+      const match = responseText.match(/\[[\s\S]*\]/);
+      if (match) {
+        queries = JSON.parse(match[0]);
+      } else {
+        return Response.json({ error: 'Failed to parse query generation response' }, { status: 500 });
+      }
+    }
+
+    // Validate and clean queries
+    queries = queries
+      .filter(q => q.text && q.intent_type)
+      .map(q => ({
+        text: q.text.trim(),
+        intent_type: q.intent_type,
+        intent_subtype: q.intent_subtype,
+      }));
+
+    // Same queries sent to all engines (we test how each engine responds)
+    const queriesByEngine: Record<string, GeneratedQuery[]> = {};
+    for (const engineId of engines) {
+      queriesByEngine[engineId] = queries;
+    }
+
+    return Response.json({
+      queries,
+      queries_by_engine: queriesByEngine,
+      total_queries: queries.length,
+      engines_count: engines.length,
+      total_api_calls: queries.length * engines.length,
+    });
+  } catch (err) {
+    console.error('generate-queries error:', err);
+    const status = String(err).includes('Unauthorized') ? 401 : 500;
+    return Response.json({ error: String(err) }, { status });
+  }
+};

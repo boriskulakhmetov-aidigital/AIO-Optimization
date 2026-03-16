@@ -1,37 +1,40 @@
 import { GoogleGenAI } from '@google/genai';
 import { ORCHESTRATOR_SYSTEM_PROMPT } from './_shared/orchestratorPrompt.js';
 
-const DISPATCH_AUDIT_TOOL = {
-  name: 'dispatch_audit',
-  description: 'Dispatch the neuromarketing audit once all intake information has been collected.',
+const DISPATCH_SCAN_TOOL = {
+  name: 'dispatch_scan',
+  description: 'Dispatch the AI search optimization scan once all intake information has been collected from the user.',
   parameters: {
     type: 'OBJECT' as const,
     properties: {
-      asset_type: {
+      concept_type: {
         type: 'STRING' as const,
-        description: 'Asset type: C1_STATIC, C2_ANIMATED, C3_VIDEO, C4_SOCIAL_POST, C5_CAROUSEL, LANDING_PAGE, FULL_WEBSITE, or EMAIL',
+        description: 'Type of concept: product, offering, or concept',
+        enum: ['product', 'offering', 'concept'],
       },
-      asset_tier: {
+      concept_name: {
         type: 'STRING' as const,
-        description: 'CREATIVE or PAGE_DESTINATION',
+        description: 'The specific product, offering, or concept to audit (e.g., "Toyota RAV4")',
       },
-      brand_name: { type: 'STRING' as const },
-      offer: { type: 'STRING' as const, description: 'What does this asset ask the user to do?' },
-      target_audience: { type: 'STRING' as const },
-      reading_direction: { type: 'STRING' as const },
-      awareness_stage: { type: 'STRING' as const },
-      campaign_context: { type: 'STRING' as const },
-      multi_campaign_confirmed: { type: 'BOOLEAN' as const },
-      traffic_source: { type: 'STRING' as const },
-      brand_voice: { type: 'STRING' as const },
-      brand_hex_primary: { type: 'STRING' as const },
-      brand_hex_secondary: { type: 'STRING' as const },
-      brand_hex_accent: { type: 'STRING' as const },
-      device: { type: 'STRING' as const },
-      competitors: { type: 'STRING' as const },
-      additional_context: { type: 'STRING' as const },
+      concept_category: {
+        type: 'STRING' as const,
+        description: 'Broader category (e.g., "SUV", "Italian Restaurant", "Luxury Watches")',
+      },
+      concept_context: {
+        type: 'STRING' as const,
+        description: 'Additional context: target market, geography, price range, competitors, goals',
+      },
+      engines: {
+        type: 'ARRAY' as const,
+        items: { type: 'STRING' as const },
+        description: 'AI engines to test. Array of engine IDs.',
+      },
+      query_count: {
+        type: 'INTEGER' as const,
+        description: 'Number of queries per engine (default 100)',
+      },
     },
-    required: ['asset_type', 'asset_tier', 'brand_name', 'offer'],
+    required: ['concept_type', 'concept_name', 'concept_category'],
   },
 };
 
@@ -44,34 +47,17 @@ export default async (req: Request) => {
   }
 
   const body = await req.json();
-  const { messages = [], fileUri, mimeType, assetUrl } = body;
+  const { messages = [] } = body;
 
   const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 
-  // Build Gemini contents array
+  // Build Gemini contents array from conversation history
   const contents: Array<{ role: string; parts: unknown[] }> = messages.map(
     (m: { role: string; content: string }) => ({
       role: m.role === 'assistant' ? 'model' : 'user',
       parts: [{ text: m.content }],
     })
   );
-
-  // Attach asset to the last user message if provided
-  if ((fileUri || assetUrl) && contents.length > 0) {
-    const lastUserIdx = contents.map(c => c.role).lastIndexOf('user');
-    if (lastUserIdx !== -1) {
-      if (fileUri) {
-        contents[lastUserIdx].parts.push({
-          fileData: { fileUri, mimeType: mimeType || 'image/jpeg' },
-        });
-      }
-      if (assetUrl) {
-        contents[lastUserIdx].parts.push({
-          text: `\n\nAsset URL to audit: ${assetUrl}`,
-        });
-      }
-    }
-  }
 
   const encoder = new TextEncoder();
 
@@ -87,11 +73,11 @@ export default async (req: Request) => {
 
       try {
         const stream = await ai.models.generateContentStream({
-          model: 'gemini-3.1-pro-preview',
+          model: 'gemini-2.0-flash',
           contents,
           config: {
             systemInstruction: ORCHESTRATOR_SYSTEM_PROMPT,
-            tools: [{ functionDeclarations: [DISPATCH_AUDIT_TOOL] }],
+            tools: [{ functionDeclarations: [DISPATCH_SCAN_TOOL] }],
             maxOutputTokens: 2048,
           },
         });
@@ -103,8 +89,8 @@ export default async (req: Request) => {
           const fcs = chunk.functionCalls;
           if (fcs && fcs.length > 0) {
             for (const fc of fcs) {
-              if (fc.name === 'dispatch_audit') {
-                emit({ type: 'audit_dispatch', intakeSummary: fc.args });
+              if (fc.name === 'dispatch_scan') {
+                emit({ type: 'scan_dispatch', scanConfig: fc.args });
               }
             }
           }
