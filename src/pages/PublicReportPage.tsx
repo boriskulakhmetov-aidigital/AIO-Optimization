@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { BrandMark } from '../design-system/BrandMark';
+import { BrandMark } from '@boriskulakhmetov-aidigital/design-system';
 
 export function PublicReportPage() {
   const token = window.location.pathname.replace(/^\/r\//, '').split('/')[0];
