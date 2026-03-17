@@ -1,12 +1,11 @@
 import { useState, useEffect } from 'react';
-import { BrandMark, ThemeToggle, useTheme } from '@boriskulakhmetov-aidigital/design-system';
+import { BrandMark, ChatPanel, ThemeToggle, useTheme } from '@boriskulakhmetov-aidigital/design-system';
 import { SignIn, UserButton, useAuth } from '@clerk/react';
 import type { AppPhase } from './lib/types';
 import { useOrchestrator } from './hooks/useOrchestrator';
 import type { ScanDispatchConfig } from './hooks/useOrchestrator';
 import { useScanPoller } from './hooks/useScanPoller';
 import { useSynthesisPoller } from './hooks/useSynthesisPoller';
-import { ChatPanel } from './components/ChatPanel';
 import { EngineSelector } from './components/EngineSelector';
 import { ScanDashboard } from './components/ScanDashboard';
 import { ScanSidebar } from './components/ScanSidebar';
@@ -421,7 +420,7 @@ function AuthenticatedApp() {
                   streaming={streaming}
                   error={chatError}
                   onSend={sendMessage}
-                  engineSelector={
+                  inputPrefix={
                     <EngineSelector
                       authFetch={authFetch}
                       selectedEngines={selectedEngines}
@@ -430,6 +429,10 @@ function AuthenticatedApp() {
                       onQueryCountChange={setQueryCount}
                     />
                   }
+                  welcomeIcon="&#128269;"
+                  welcomeTitle="AI Search Optimization"
+                  welcomeDescription="Tell me about a product, brand, or concept and I'll analyze how it's recommended across consumer AI engines like ChatGPT, Gemini, Claude, Grok, and more."
+                  placeholder="Describe what you'd like to analyze (e.g., 'How is Tesla recommended by AI assistants?')"
                 />
               )}
 
