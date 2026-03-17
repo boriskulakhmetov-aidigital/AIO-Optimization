@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { BrandMark, ChatPanel, ThemeToggle, useTheme } from '@boriskulakhmetov-aidigital/design-system';
+import { AdminPanel, BrandMark, ChatPanel, ThemeToggle, useTheme } from '@boriskulakhmetov-aidigital/design-system';
 import { SignIn, UserButton, useAuth } from '@clerk/react';
 import type { AppPhase } from './lib/types';
 import { useOrchestrator } from './hooks/useOrchestrator';
@@ -9,7 +9,6 @@ import { useSynthesisPoller } from './hooks/useSynthesisPoller';
 import { EngineSelector } from './components/EngineSelector';
 import { ScanDashboard } from './components/ScanDashboard';
 import { ScanSidebar } from './components/ScanSidebar';
-import { AdminPanel } from './components/AdminPanel';
 import { AIOReport } from './components/report/AIOReport';
 import type { AIOReportData, EngineId } from './lib/types';
 
@@ -411,7 +410,7 @@ function AuthenticatedApp() {
 
         <main className="app-main">
           {showAdmin ? (
-            <AdminPanel authFetch={authFetch} />
+            <AdminPanel authFetch={authFetch} activityLabel="Scan" detailEndpoint="get-scan" />
           ) : (
             <>
               {phase === 'chat' && (
