@@ -4,6 +4,7 @@ import {
   saveScanReview, saveScanReportData, updateScanStatus,
   getQueriesForScan,
 } from './_shared/supabase.js';
+import { trackUsage } from './_shared/access.js';
 import { getEngineName } from './_shared/engineRegistry.js';
 import { buildReviewerPrompt, formatSynthesesForReview } from './_shared/reviewerPrompt.js';
 import type {
@@ -153,6 +154,13 @@ export default async (req: Request) => {
     // Save the final report and mark scan as complete
     await saveScanReportData(scanId, reportData);
     // saveScanReportData already sets status to 'complete'
+
+    // ── Track usage for tier billing ──────────────────────────────────────
+    if (scan.user_id) {
+      await trackUsage(scan.user_id, 'aio-optimization').catch(err =>
+        console.warn('trackUsage failed:', err)
+      );
+    }
 
     log.info('review.complete', { function_name: 'review-background', entity_type: 'scan', entity_id: scanId, correlation_id: scanId, ai_provider: 'gemini', ai_model: 'gemini-3.1-pro-preview', duration_ms: Date.now() - startTime, meta: { ai_sov: review.overall_ai_sov, action_items: review.action_items?.length ?? 0 } });
     console.log(`Review complete for scan ${scanId}: AI-SOV=${review.overall_ai_sov}%, ${review.action_items?.length ?? 0} action items`);
