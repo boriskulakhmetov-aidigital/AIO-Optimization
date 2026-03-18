@@ -16,6 +16,8 @@ AIO (AI Optimization) audits how AI search engines perceive your brand. It queri
 
 Open the app and sign in with your AIDigital Labs account.
 
+![AIO Optimization — Main View](/guide/aio-optimization-landing.png)
+
 ### 2. Enter Your Brand and Domain
 
 Tell the AI what brand or product you want to scan:
@@ -35,6 +37,8 @@ Choose which AI search engines to include in the scan:
 - And others as available
 
 > **Tip:** Select all engines for a comprehensive view. Each AI has different training data and will surface different information about your brand.
+
+![Chat Panel](/guide/aio-optimization-chat.png)
 
 ### 4. Set the Number of Queries
 
@@ -87,11 +91,15 @@ Export the report as PDF or share it via link.
 
 - **Use dark mode** for a more comfortable viewing experience. Toggle it in the top-right corner.
 
+![Dark Mode](/guide/aio-optimization-dark.png)
+
 ---
 
 ## Your Past Scans
 
 All scans are saved automatically. Use the sidebar to browse previous scans and track changes over time.
+
+![Session History](/guide/aio-optimization-sidebar.png)
 `;
 
 export default function AppHelpPage() {
