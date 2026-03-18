@@ -1,5 +1,6 @@
 import type { CrossEngineReview, EngineId } from '../../lib/types';
 import { ENGINE_META } from '../../lib/engineMeta';
+import { KpiTile, SectionDivider } from '@boriskulakhmetov-aidigital/design-system';
 
 interface CompetitiveIntelProps {
   review: CrossEngineReview;
@@ -11,7 +12,7 @@ export function CompetitiveIntel({ review }: CompetitiveIntelProps) {
 
   return (
     <div className="competitive-intel">
-      <h3 className="section-title">Competitive Intelligence</h3>
+      <SectionDivider label="Competitive Intelligence" />
 
       {/* Landscape */}
       <div className="intel-card">
@@ -54,22 +55,10 @@ export function CompetitiveIntel({ review }: CompetitiveIntelProps) {
 
       {/* Overall stats */}
       <div className="intel-stats">
-        <div className="intel-stat">
-          <span className="intel-stat__value">{formatNum(review.overall_ai_sov)}%</span>
-          <span className="intel-stat__label">Avg AI Share of Voice</span>
-        </div>
-        <div className="intel-stat">
-          <span className="intel-stat__value">{formatNum(review.overall_first_position_rate)}%</span>
-          <span className="intel-stat__label">Avg First Position</span>
-        </div>
-        <div className="intel-stat">
-          <span className="intel-stat__value">{formatNum(review.overall_net_sentiment)}</span>
-          <span className="intel-stat__label">Avg Net Sentiment</span>
-        </div>
-        <div className="intel-stat">
-          <span className="intel-stat__value">{formatNum(review.engine_consistency)}</span>
-          <span className="intel-stat__label">Consistency (std dev)</span>
-        </div>
+        <KpiTile label="Avg AI Share of Voice" value={formatNum(review.overall_ai_sov)} suffix="%" />
+        <KpiTile label="Avg First Position" value={formatNum(review.overall_first_position_rate)} suffix="%" />
+        <KpiTile label="Avg Net Sentiment" value={formatNum(review.overall_net_sentiment)} />
+        <KpiTile label="Consistency (std dev)" value={formatNum(review.engine_consistency)} />
       </div>
     </div>
   );

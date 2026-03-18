@@ -1,4 +1,5 @@
 import type { ActionItem } from '../../lib/types';
+import { ActionCard, PriorityBadge, SectionDivider } from '@boriskulakhmetov-aidigital/design-system';
 
 interface ActionItemsProps {
   items: ActionItem[];
@@ -15,7 +16,7 @@ export function ActionItems({ items }: ActionItemsProps) {
 
   return (
     <div className="action-items">
-      <h3 className="section-title">Prioritized Action Items</h3>
+      <SectionDivider label="Prioritized Action Items" />
       <p className="section-desc">
         Recommendations to improve your brand's AI search visibility, ordered by impact.
       </p>
@@ -23,19 +24,18 @@ export function ActionItems({ items }: ActionItemsProps) {
       {grouped.map(group => (
         <div key={group.priority} className="action-group">
           <div className={`action-group__header action-group__header--${group.priority}`}>
-            <span className={`priority-badge priority-badge--${group.priority}`}>
-              {group.priority.toUpperCase()}
-            </span>
+            <PriorityBadge priority={group.priority} />
             <span className="action-group__count">{group.items.length} item{group.items.length !== 1 ? 's' : ''}</span>
           </div>
 
           <div className="action-group__list">
             {group.items.map((item, idx) => (
-              <div key={idx} className={`action-card action-card--${item.priority}`}>
-                <div className="action-card__top">
-                  <span className="action-card__kpi">{item.kpi_target}</span>
-                </div>
-                <p className="action-card__text">{item.action_text}</p>
+              <ActionCard
+                key={idx}
+                title={item.action_text}
+                badge={<PriorityBadge priority={item.priority} />}
+                meta={<span className="action-card__kpi">{item.kpi_target}</span>}
+              >
                 <div className="action-card__details">
                   <div className="action-card__detail">
                     <span className="action-card__detail-label">Rationale</span>
@@ -46,7 +46,7 @@ export function ActionItems({ items }: ActionItemsProps) {
                     <span className="action-card__detail-text action-card__impact">{item.estimated_impact}</span>
                   </div>
                 </div>
-              </div>
+              </ActionCard>
             ))}
           </div>
         </div>

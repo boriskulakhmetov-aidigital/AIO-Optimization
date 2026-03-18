@@ -1,5 +1,6 @@
 import type { CrossEngineReview, EngineId } from '../../lib/types';
 import { ENGINE_META, getEngineColor } from '../../lib/engineMeta';
+import { KpiTile, ProgressBar, SectionDivider } from '@boriskulakhmetov-aidigital/design-system';
 
 interface EngineAwarenessProps {
   review: CrossEngineReview;
@@ -11,7 +12,7 @@ export function EngineAwareness({ review, onEngineClick }: EngineAwarenessProps)
 
   return (
     <div className="engine-awareness">
-      <h3 className="section-title">Brand Awareness by Engine</h3>
+      <SectionDivider label="Brand Awareness by Engine" />
       <p className="section-desc">
         Ranked from most to least aware. Click any engine for a deep dive.
       </p>
@@ -55,18 +56,16 @@ export function EngineAwareness({ review, onEngineClick }: EngineAwarenessProps)
                 </div>
 
                 <div className="awareness-card__kpis">
-                  <KpiChip label="AI-SOV" value={eng.ai_sov} suffix="%" />
-                  <KpiChip label="RSI" value={eng.rsi} suffix="/3" />
-                  <KpiChip label="Sentiment" value={eng.net_sentiment} suffix="" />
+                  <KpiTile label="AI-SOV" value={formatKpi(eng.ai_sov)} suffix="%" />
+                  <KpiTile label="RSI" value={formatKpi(eng.rsi)} suffix="/3" />
+                  <KpiTile label="Sentiment" value={formatKpi(eng.net_sentiment)} />
                 </div>
 
                 {/* AI-SOV bar */}
-                <div className="awareness-card__bar-track">
-                  <div
-                    className="awareness-card__bar-fill"
-                    style={{ width: `${Math.min(eng.ai_sov, 100)}%`, background: color }}
-                  />
-                </div>
+                <ProgressBar
+                  value={Math.min(eng.ai_sov, 100) / 100}
+                  color={color}
+                />
               </div>
             </div>
           );
@@ -84,16 +83,9 @@ export function EngineAwareness({ review, onEngineClick }: EngineAwarenessProps)
   );
 }
 
-function KpiChip({ label, value, suffix }: { label: string; value: number; suffix: string }) {
-  const display = typeof value === 'number'
-    ? (Number.isInteger(value) ? String(value) : value.toFixed(1))
-    : '—';
-  return (
-    <div className="kpi-chip">
-      <span className="kpi-chip__label">{label}</span>
-      <span className="kpi-chip__value">{display}{suffix}</span>
-    </div>
-  );
+function formatKpi(n: number): string {
+  if (typeof n !== 'number') return '—';
+  return Number.isInteger(n) ? String(n) : n.toFixed(1);
 }
 
 function investmentClass(level?: string): string {

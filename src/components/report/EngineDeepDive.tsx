@@ -1,6 +1,6 @@
-import { useState } from 'react';
 import type { EngineSynthesis, EngineId } from '../../lib/types';
 import { ENGINE_META, getEngineColor } from '../../lib/engineMeta';
+import { KpiTile, ReportTable, CollapsibleRow, SectionDivider } from '@boriskulakhmetov-aidigital/design-system';
 
 interface EngineDeepDiveProps {
   syntheses: EngineSynthesis[];
@@ -42,8 +42,28 @@ export function EngineDeepDive({ syntheses, selectedEngine, onSelect }: EngineDe
   );
 }
 
+const intentColumns = [
+  { key: 'intent_type', header: 'Intent', render: (row: any) => <span className="intent-type-badge">{row.intent_type}</span> },
+  { key: 'query_count', header: 'Queries', render: (row: any) => <>{row.query_count}</>, align: 'center' as const },
+  { key: 'mention_rate', header: 'Mention Rate', render: (row: any) => <>{formatNum(row.mention_rate)}%</>, align: 'right' as const },
+  {
+    key: 'avg_sentiment',
+    header: 'Avg Sentiment',
+    render: (row: any) => (
+      <span className={row.avg_sentiment >= 0 ? 'text-positive' : 'text-negative'}>
+        {row.avg_sentiment >= 0 ? '+' : ''}{formatNum(row.avg_sentiment)}
+      </span>
+    ),
+    align: 'right' as const,
+  },
+];
+
+function fmtVal(v: number | null): string {
+  if (v == null) return '—';
+  return formatNum(v);
+}
+
 function EngineDetail({ synthesis: s }: { synthesis: EngineSynthesis }) {
-  const [showVerbatims, setShowVerbatims] = useState(false);
   const color = getEngineColor(s.engine_id as EngineId);
   const meta = ENGINE_META[s.engine_id as EngineId];
 
@@ -68,95 +88,61 @@ function EngineDetail({ synthesis: s }: { synthesis: EngineSynthesis }) {
 
       {/* KPI Grid */}
       <div className="engine-detail__kpis">
-        <KpiTile label="AI Share of Voice" value={s.ai_sov} suffix="%" color={color} />
-        <KpiTile label="First Position" value={s.first_position_rate} suffix="%" color={color} />
-        <KpiTile label="Top 3 Rate" value={s.top3_rate} suffix="%" color={color} />
-        <KpiTile label="Avg Rank" value={s.avg_rank_position} suffix="" color={color} />
-        <KpiTile label="Rec. Strength" value={s.recommendation_strength_index} suffix="/3" color={color} />
-        <KpiTile label="Net Sentiment" value={s.net_sentiment_score} suffix="" color={color} />
-        <KpiTile label="Discovery Capture" value={s.discovery_capture_rate} suffix="%" color={color} />
-        <KpiTile label="Competitive Win" value={s.competitive_win_rate} suffix="%" color={color} />
+        <KpiTile label="AI Share of Voice" value={fmtVal(s.ai_sov)} suffix="%" color={color} />
+        <KpiTile label="First Position" value={fmtVal(s.first_position_rate)} suffix="%" color={color} />
+        <KpiTile label="Top 3 Rate" value={fmtVal(s.top3_rate)} suffix="%" color={color} />
+        <KpiTile label="Avg Rank" value={fmtVal(s.avg_rank_position)} color={color} />
+        <KpiTile label="Rec. Strength" value={fmtVal(s.recommendation_strength_index)} suffix="/3" color={color} />
+        <KpiTile label="Net Sentiment" value={fmtVal(s.net_sentiment_score)} color={color} />
+        <KpiTile label="Discovery Capture" value={fmtVal(s.discovery_capture_rate)} suffix="%" color={color} />
+        <KpiTile label="Competitive Win" value={fmtVal(s.competitive_win_rate)} suffix="%" color={color} />
       </div>
 
       {/* Intent Breakdown */}
       {s.intent_breakdown && s.intent_breakdown.length > 0 && (
         <div className="engine-detail__intents">
-          <h4 className="engine-detail__sub-title">Performance by Query Intent</h4>
-          <div className="intent-table">
-            <div className="intent-table__header">
-              <span>Intent</span>
-              <span>Queries</span>
-              <span>Mention Rate</span>
-              <span>Avg Sentiment</span>
-            </div>
-            {s.intent_breakdown.map(ib => (
-              <div key={ib.intent_type} className="intent-table__row">
-                <span className="intent-type-badge">{ib.intent_type}</span>
-                <span>{ib.query_count}</span>
-                <span>{formatNum(ib.mention_rate)}%</span>
-                <span className={ib.avg_sentiment >= 0 ? 'text-positive' : 'text-negative'}>
-                  {ib.avg_sentiment >= 0 ? '+' : ''}{formatNum(ib.avg_sentiment)}
-                </span>
-              </div>
-            ))}
-          </div>
+          <SectionDivider label="Performance by Query Intent" />
+          <ReportTable
+            columns={intentColumns}
+            rows={s.intent_breakdown}
+            getKey={(row) => row.intent_type}
+          />
         </div>
       )}
 
       {/* Verbatims */}
       {(s.top_positive_responses?.length > 0 || s.top_negative_responses?.length > 0) && (
-        <div className="engine-detail__verbatims">
-          <button
-            className="engine-detail__verbatim-toggle"
-            onClick={() => setShowVerbatims(!showVerbatims)}
-          >
-            {showVerbatims ? 'Hide' : 'Show'} Response Excerpts
-            ({(s.top_positive_responses?.length ?? 0) + (s.top_negative_responses?.length ?? 0)})
-          </button>
-
-          {showVerbatims && (
-            <div className="verbatim-list">
-              {s.top_positive_responses?.length > 0 && (
-                <>
-                  <h5 className="verbatim-list__heading verbatim-list__heading--positive">
-                    Top Positive Mentions
-                  </h5>
-                  {s.top_positive_responses.map((v, i) => (
-                    <VerbatimCard key={`pos-${i}`} query={v.query} excerpt={v.excerpt} positive />
-                  ))}
-                </>
-              )}
-              {s.top_negative_responses?.length > 0 && (
-                <>
-                  <h5 className="verbatim-list__heading verbatim-list__heading--negative">
-                    Top Negative Mentions
-                  </h5>
-                  {s.top_negative_responses.map((v, i) => (
-                    <VerbatimCard key={`neg-${i}`} query={v.query} excerpt={v.excerpt} />
-                  ))}
-                </>
-              )}
-            </div>
-          )}
-        </div>
+        <CollapsibleRow
+          header={
+            <span>
+              Response Excerpts ({(s.top_positive_responses?.length ?? 0) + (s.top_negative_responses?.length ?? 0)})
+            </span>
+          }
+        >
+          <div className="verbatim-list">
+            {s.top_positive_responses?.length > 0 && (
+              <>
+                <h5 className="verbatim-list__heading verbatim-list__heading--positive">
+                  Top Positive Mentions
+                </h5>
+                {s.top_positive_responses.map((v, i) => (
+                  <VerbatimCard key={`pos-${i}`} query={v.query} excerpt={v.excerpt} positive />
+                ))}
+              </>
+            )}
+            {s.top_negative_responses?.length > 0 && (
+              <>
+                <h5 className="verbatim-list__heading verbatim-list__heading--negative">
+                  Top Negative Mentions
+                </h5>
+                {s.top_negative_responses.map((v, i) => (
+                  <VerbatimCard key={`neg-${i}`} query={v.query} excerpt={v.excerpt} />
+                ))}
+              </>
+            )}
+          </div>
+        </CollapsibleRow>
       )}
-    </div>
-  );
-}
-
-function KpiTile({ label, value, suffix, color }: {
-  label: string;
-  value: number | null;
-  suffix: string;
-  color: string;
-}) {
-  const display = value != null ? formatNum(value) : '—';
-  return (
-    <div className="engine-kpi-tile">
-      <span className="engine-kpi-tile__value" style={{ color }}>
-        {display}{value != null ? suffix : ''}
-      </span>
-      <span className="engine-kpi-tile__label">{label}</span>
     </div>
   );
 }

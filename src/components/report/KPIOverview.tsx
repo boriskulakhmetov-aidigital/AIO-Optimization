@@ -1,6 +1,7 @@
 import type { AIOReportData } from '../../lib/types';
 import { ENGINE_META, getEngineColor } from '../../lib/engineMeta';
 import type { EngineId } from '../../lib/types';
+import { KpiTile, ProgressBar, SectionDivider } from '@boriskulakhmetov-aidigital/design-system';
 
 interface KPIOverviewProps {
   data: AIOReportData;
@@ -26,26 +27,26 @@ export function KPIOverview({ data, onEngineClick }: KPIOverviewProps) {
     <div className="kpi-overview">
       {/* Executive Summary */}
       <div className="kpi-overview__exec">
-        <h3 className="kpi-overview__section-title">Executive Summary</h3>
+        <SectionDivider label="Executive Summary" />
         <p className="kpi-overview__exec-text">{review.executive_summary}</p>
       </div>
 
       {/* KPI Grid */}
       <div className="kpi-overview__grid">
         {kpiCards.map(card => (
-          <div key={card.label} className="kpi-tile">
-            <span className="kpi-tile__value">
-              {typeof card.value === 'number' ? formatNum(card.value) : '—'}{card.suffix}
-            </span>
-            <span className="kpi-tile__label">{card.label}</span>
-            <span className="kpi-tile__desc">{card.desc}</span>
-          </div>
+          <KpiTile
+            key={card.label}
+            label={card.label}
+            value={typeof card.value === 'number' ? formatNum(card.value) : '—'}
+            suffix={card.suffix}
+            description={card.desc}
+          />
         ))}
       </div>
 
       {/* Quick Engine Summary */}
       <div className="kpi-overview__engines">
-        <h3 className="kpi-overview__section-title">Engine Awareness at a Glance</h3>
+        <SectionDivider label="Engine Awareness at a Glance" />
         <div className="engine-bars">
           {review.engine_rankings.map(eng => {
             const color = getEngineColor(eng.engine_id as EngineId);
@@ -63,13 +64,11 @@ export function KPIOverview({ data, onEngineClick }: KPIOverviewProps) {
                     {eng.overall_grade}
                   </span>
                 </div>
-                <div className="engine-bar__track">
-                  <div
-                    className="engine-bar__fill"
-                    style={{ width: `${Math.min(eng.ai_sov, 100)}%`, background: color }}
-                  />
-                </div>
-                <span className="engine-bar__value">{formatNum(eng.ai_sov)}%</span>
+                <ProgressBar
+                  value={Math.min(eng.ai_sov, 100) / 100}
+                  color={color}
+                  label={`${formatNum(eng.ai_sov)}%`}
+                />
               </div>
             );
           })}

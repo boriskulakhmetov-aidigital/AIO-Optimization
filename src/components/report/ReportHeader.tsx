@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import type { AIOReportData } from '../../lib/types';
+import { PageHeader } from '@boriskulakhmetov-aidigital/design-system';
 
 interface ReportHeaderProps {
   data: AIOReportData;
@@ -105,12 +106,10 @@ export function ReportHeader({ data, conceptName, onNewScan, scanId, authFetch }
 
   return (
     <>
-      <div className="report-header">
-        <div className="report-header__left">
-          <h1 className="report-header__title">
-            AI Search Optimization Report
-          </h1>
-          <p className="report-header__concept">{conceptName}</p>
+      <PageHeader
+        title="AI Search Optimization Report"
+        subtitle={conceptName}
+        meta={
           <div className="report-header__meta">
             <span>{meta.concept_type}</span>
             <span className="report-header__sep">&middot;</span>
@@ -122,25 +121,25 @@ export function ReportHeader({ data, conceptName, onNewScan, scanId, authFetch }
             <span className="report-header__sep">&middot;</span>
             <span>{durationStr}</span>
           </div>
-        </div>
-        <div className="report-header__actions">
-          <button
-            className="btn-ghost btn-sm"
-            onClick={handleExportPDF}
-            disabled={exporting}
-            title="Export as PDF"
-          >
-            {exporting ? 'Exporting...' : 'PDF'}
-          </button>
-          <button
-            className="btn-ghost btn-sm"
-            onClick={handleShare}
-            title="Share report"
-          >
-            {'Share'}
-          </button>
-          <button className="btn-primary btn-sm" onClick={onNewScan}>New Scan</button>
-        </div>
+        }
+      />
+      <div className="report-header__actions">
+        <button
+          className="btn-ghost btn-sm"
+          onClick={handleExportPDF}
+          disabled={exporting}
+          title="Export as PDF"
+        >
+          {exporting ? 'Exporting...' : 'PDF'}
+        </button>
+        <button
+          className="btn-ghost btn-sm"
+          onClick={handleShare}
+          title="Share report"
+        >
+          {'Share'}
+        </button>
+        <button className="btn-primary btn-sm" onClick={onNewScan}>New Scan</button>
       </div>
 
       {/* Share Modal */}
