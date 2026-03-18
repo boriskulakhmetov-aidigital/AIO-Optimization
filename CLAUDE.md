@@ -1,162 +1,178 @@
-# AIDigital Labs — AIO Optimization
+# AIO Optimization
 
-> Auto-loaded by Claude Code. Provides full context for this app.
+> **URL:** https://aio-optimization.apps.aidigitallabs.com
+> **Repo:** `boriskulakhmetov-aidigital/AIO-Optimization`
 
-## What This App Does
-
-AI search optimization tool that analyzes how a product, brand, or concept is recommended across consumer AI engines (ChatGPT, Gemini, Claude, Grok, Perplexity, Copilot, Meta AI, Google SGE). Generates diverse search queries, runs them against selected engines, synthesizes per-engine results, and produces a cross-engine competitive intelligence report with KPIs, rankings, and action items.
-
-## URLs
-
-- **Live:** https://aio-optimization.apps.aidigitallabs.com
-- **Netlify site ID:** `2c8e3afc-303f-4716-ad1b-8198cd30a4ec`
-- **GitHub:** `boriskulakhmetov-aidigital/AIO-Optimization`
-- **Deploy:** `npx netlify-cli deploy --prod --dir=dist --site=2c8e3afc-303f-4716-ad1b-8198cd30a4ec`
+AIO (AI Optimization) analyzes how a product, brand, or concept is recommended across consumer AI engines (ChatGPT, Gemini, Claude, Grok, Perplexity, Copilot, Meta AI, Google SGE). It generates diverse search queries, runs them against selected engines, synthesizes per-engine results, performs cross-engine review, and produces a comprehensive report with KPIs like AI Share of Voice, recommendation strength, and sentiment scores.
 
 ## Tech Stack
 
-- React 19 + Vite 6 + TypeScript
-- `@boriskulakhmetov-aidigital/design-system` (shared components + theme)
-- Clerk authentication (`@clerk/react`)
-- Google Gemini AI (`@google/genai`) — `gemini-2.0-flash` for orchestrator and agents
-- Neon serverless PostgreSQL (`@neondatabase/serverless`)
-- Netlify Blobs for async job storage
-- Netlify Functions (serverless backend, `.mts` ESM with esbuild)
-- `marked` for Markdown rendering, `html2pdf.js` for PDF export
+| Layer | Technology |
+|-------|-----------|
+| Frontend | React 19, Vite, TypeScript |
+| Auth | Clerk (@clerk/react, @clerk/backend) |
+| Database | Supabase PostgreSQL (RLS + Realtime) |
+| AI | Google Gemini (@google/genai) |
+| Backend | Netlify Functions (serverless) |
+| Hosting | Netlify |
+| PDF Export | html2pdf.js |
+| Design System | @boriskulakhmetov-aidigital/design-system ^7.4.0 |
 
-## Key Patterns
-
-- Background function config: `export const config: Config = { background: true }`
-- Rubric/prompts are TypeScript string constants (not file reads) for reliable esbuild bundling
-- Multi-phase pipeline: generating → scanning → synthesizing → reviewing → report_ready
-- Per-engine parallelism: scan-engine-background runs independently per engine
-- Frontend polls `scan-status` and `synthesis-status` using `useScanPoller` and `useSynthesisPoller`
-
-## Design System Integration
-
-```typescript
-// main.tsx
-import { applyTheme, aiLabsTheme } from '@boriskulakhmetov-aidigital/design-system'
-import '@boriskulakhmetov-aidigital/design-system/style.css'
-applyTheme(aiLabsTheme)
-```
-
-Components used from design system: `AppShell`, `ChatPanel`, `BrandMark`, `ThemeToggle`, `useTheme`
-
-AppShell props: `activityLabel="Scan"`, `detailEndpoint="get-scan"`
-
-## Project Structure
+## Architecture
 
 ```
 src/
-  main.tsx              — Entry point, Clerk auth provider, theme setup
-  App.tsx               — AppShell + multi-phase UI (chat → generating → scanning → synthesizing → reviewing → report)
-  index.css             — CSS variable definitions
-  lib/
-    types.ts            — Re-exports shared types from backend _shared/types.ts
-    engineMeta.ts       — Engine display names, icons, and metadata
-    sseParser.ts        — SSE stream parser utility
-  hooks/
-    useOrchestrator.ts  — Chat intake flow, dispatches scan config
-    useScanPoller.ts    — Polls scan-status for engine query progress
-    useSynthesisPoller.ts — Polls synthesis-status for synthesis/review progress
+  main.tsx                          ← ClerkProvider, applyTheme, public report route
+  App.tsx                           ← AppShell + ScanBridgeProvider (domain logic via context)
   components/
-    EngineSelector.tsx  — Engine multi-select + query count input (shown in chat input area)
-    ScanDashboard.tsx   — Live scan progress dashboard (per-engine progress bars)
-    ScanSidebar.tsx     — Past scans list with load/delete
+    ScanSidebar.tsx                 ← Scan history sidebar
+    ScanDashboard.tsx               ← Real-time scan progress dashboard
+    EngineSelector.tsx              ← Engine selection + query count config
     report/
-      AIOReport.tsx     — Main report wrapper
-      ReportHeader.tsx  — Report header with concept name and share button
-      KPIOverview.tsx   — Overall KPI cards (mention rate, sentiment, rank)
-      EngineAwareness.tsx — Cross-engine awareness comparison
-      EngineDeepDive.tsx — Per-engine detailed breakdown
-      CompetitiveIntel.tsx — Competitive landscape analysis
-      ActionItems.tsx   — Prioritized action roadmap
+      AIOReport.tsx                 ← Root report component
+      KPIOverview.tsx               ← KPI cards (AI-SOV, sentiment, etc.)
+      EngineAwareness.tsx           ← Engine ranking table
+      EngineDeepDive.tsx            ← Per-engine synthesis details
+      CompetitiveIntel.tsx          ← Competitive landscape analysis
+      ActionItems.tsx               ← Prioritized action items
+      ReportHeader.tsx              ← Report header with meta
+  hooks/
+    useOrchestrator.ts              ← SSE streaming chat with orchestrator
+    useScanPoller.ts                ← Polls scan-status endpoint for engine progress
+    useSynthesisPoller.ts           ← Polls synthesis-status for per-engine synthesis + review
+  lib/
+    types.ts                        ← Re-exports shared types from _shared/types.ts
+    engineMeta.ts                   ← Engine display names and metadata
+    sseParser.ts                    ← SSE stream parser utility
   pages/
-    PublicReportPage.tsx — Public shareable report (no auth)
-netlify/functions/
-  _shared/              — Shared utilities (DB client, auth helpers, types.ts)
-  orchestrator.mts      — Chat intake SSE endpoint (streaming)
-  generate-queries.mts  — Generates diverse search queries for a concept
-  dispatch-scan.mts     — Creates scan job and dispatches per-engine background functions
-  scan-engine-background.mts — Background: runs queries against a single AI engine
-  synthesize-engine-background.mts — Background: synthesizes results for one engine
-  review-background.mts — Background: cross-engine review and final report generation
-  scan-status.mts       — Poll scan progress (per-engine query completion)
-  synthesis-status.mts  — Poll synthesis/review progress
-  get-scan.mts          — Fetch single scan by ID (includes report_data)
-  list-scans.mts        — List user's past scans
-  save-scan.mts         — Create/update/delete scans
-  engine-availability.mts — Check which AI engines are currently available
-  report-share.mts      — Generate/manage public share links
-  public-report.mts     — Fetch public report data (no auth)
-  init-user.mts         — Initialize user record on first login
-  admin-accounts.mts    — Admin account management
-  db-migrate.mts        — Database migration utility
+    PublicReportPage.tsx            ← Unauthenticated shareable report view
+netlify/
+  functions/
+    _shared/
+      supabase.ts                   ← Supabase service-role client + DB helpers
+      auth.ts                       ← Clerk token verification
+      types.ts                      ← All shared types (EngineId, ScanConfig, AIOReportData, etc.)
+      engineRegistry.ts             ← Engine API configurations
+      engineClient.ts               ← Engine query execution client
+      orchestratorPrompt.ts         ← Orchestrator system prompt
+      queryGeneratorPrompt.ts       ← Query generation system prompt
+      synthesizerPrompt.ts          ← Per-engine synthesis prompt
+      reviewerPrompt.ts             ← Cross-engine review prompt
+      kpiFramework.ts               ← KPI calculation framework
+      rateLimiter.ts                ← Rate limiting for engine queries
+      access.ts                     ← Tier-based access control
+      logger.ts                     ← Structured logging
+    orchestrator.mts                ← Chat intake agent (SSE streaming)
+    generate-queries.mts            ← Generates diverse search queries per engine
+    dispatch-scan.mts               ← Creates scan record, dispatches engine jobs
+    scan-engine-background.mts      ← Runs queries against a single engine (background)
+    synthesize-engine-background.mts ← Per-engine result synthesis (background)
+    review-background.mts           ← Cross-engine review + final report assembly (background)
+    scan-status.mts                 ← Returns current scan progress (engine job statuses)
+    synthesis-status.mts            ← Returns synthesis/review progress
+    engine-availability.mts         ← Returns which engines are currently available
 ```
 
-## Data Model
+## Database Tables
 
-```typescript
-type AppPhase = 'chat' | 'generating' | 'scanning' | 'synthesizing' | 'reviewing' | 'report_ready' | 'error';
+### `scans`
 
-type ConceptType = 'product' | 'offering' | 'concept';
+| Column | Type | Description |
+|--------|------|-------------|
+| id | uuid | Primary key (scan ID) |
+| user_id | text | Clerk user ID |
+| org_id | text | Organization ID |
+| concept_name | text | Product/brand/concept being analyzed |
+| concept_type | text | product / offering / concept |
+| concept_category | text | Category context |
+| status | text | intake / generating / scanning / synthesizing / reviewing / complete / error |
+| report_data | jsonb | Final AIOReportData JSON |
+| deleted_by_user | boolean | Soft delete flag |
+| created_at | timestamptz | Creation timestamp |
 
-type EngineId = 'chatgpt_free' | 'chatgpt_pro' | 'gemini_free' | 'gemini_pro'
-  | 'claude_free' | 'claude_pro' | 'grok_free' | 'grok_pro'
-  | 'perplexity' | 'copilot' | 'meta_ai' | 'google_sge';
+### `scan_engines`
 
-type QueryIntentType = 'direct' | 'comparative' | 'ranked' | 'discovery' | 'sentiment' | 'contextual' | 'negative';
+| Column | Type | Description |
+|--------|------|-------------|
+| id | uuid | Primary key |
+| scan_id | uuid | FK to scans |
+| engine_id | text | Engine identifier (chatgpt_free, gemini_pro, etc.) |
+| status | text | pending / querying / synthesizing / complete / error |
+| queries_total | integer | Total queries for this engine |
+| queries_done | integer | Completed queries count |
+| synthesis | jsonb | EngineSynthesis result |
 
-interface ScanConfig {
-  concept_type: ConceptType; concept_name: string;
-  concept_category?: string; concept_context?: string;
-  engines: EngineId[]; query_count: number;
-}
+### `scan_queries`
 
-interface GeneratedQuery { text: string; intent_type: QueryIntentType; intent_subtype?: string; }
+| Column | Type | Description |
+|--------|------|-------------|
+| id | uuid | Primary key |
+| scan_id | uuid | FK to scans |
+| engine_id | text | Engine identifier |
+| query_text | text | Query text |
+| intent_type | text | direct / comparative / ranked / discovery / sentiment / contextual / negative |
+| status | text | pending / running / complete / error / retry |
+| response | text | Raw engine response |
+| mentioned | boolean | Whether concept was mentioned |
+| rank | integer | Position rank (null if not ranked) |
+| sentiment | text | positive / neutral / negative |
 
-// AIOReportData contains: OverallKPIs, per-engine EngineSynthesis[], CrossEngineReview, ActionItem[]
+### `scan_review`
+
+| Column | Type | Description |
+|--------|------|-------------|
+| scan_id | uuid | FK to scans |
+| review | jsonb | CrossEngineReview result |
+| status | text | pending / processing / complete / error |
+
+## Netlify Functions
+
+| Function | Description |
+|----------|-------------|
+| `orchestrator.mts` | SSE chat intake — collects concept info, engines, query count |
+| `generate-queries.mts` | Generates diverse search queries using Gemini (7 intent types) |
+| `dispatch-scan.mts` | Creates scan + engine + query records; kicks off scan-engine-background jobs |
+| `scan-engine-background.mts` | Runs all queries for one engine; updates scan_queries with results |
+| `synthesize-engine-background.mts` | Synthesizes per-engine results into KPIs and narrative |
+| `review-background.mts` | Cross-engine review, action items, final report assembly |
+| `scan-status.mts` | Returns real-time scan progress for dashboard |
+| `synthesis-status.mts` | Returns synthesis/review phase progress |
+| `engine-availability.mts` | Returns which AI engines are currently operational |
+
+## Environment Variables
+
+All shared env vars are inherited from Netlify team level:
+
+| Variable | Side |
+|----------|------|
+| `VITE_CLERK_PUBLISHABLE_KEY` | Client |
+| `CLERK_SECRET_KEY` | Server |
+| `GEMINI_API_KEY` | Server |
+| `VITE_SUPABASE_URL` | Client |
+| `VITE_SUPABASE_ANON_KEY` | Client |
+| `SUPABASE_URL` | Server |
+| `SUPABASE_SERVICE_ROLE_KEY` | Server |
+| `NPM_TOKEN` | Build |
+
+## Development Setup
+
+```bash
+git clone https://github.com/boriskulakhmetov-aidigital/AIO-Optimization.git
+cd AIO-Optimization
+npm install
+# Create .env.local with required variables (see design system CLAUDE.md for values)
+npm run dev
 ```
 
-## API Endpoints (Netlify Functions)
+## Deployment
 
-| Endpoint | Method | Description |
-|---|---|---|
-| `orchestrator` | POST (SSE) | Chat intake — streams assistant messages, dispatches scan config |
-| `generate-queries` | POST | Generates diverse search queries for the concept |
-| `dispatch-scan` | POST | Creates scan job, dispatches per-engine background functions |
-| `scan-engine-background` | POST | Background: runs queries against one AI engine |
-| `synthesize-engine-background` | POST | Background: synthesizes results for one engine |
-| `review-background` | POST | Background: cross-engine review and final report |
-| `scan-status` | GET | Poll scan progress (per-engine query completion) |
-| `synthesis-status` | GET | Poll synthesis/review phase progress |
-| `get-scan` | GET | Fetch single scan by `?id=` (includes report_data) |
-| `list-scans` | GET | List all scans for authenticated user |
-| `save-scan` | POST | Create, update, or delete scans |
-| `engine-availability` | GET | Check which AI engines are currently available |
-| `report-share` | POST | Generate or manage public share link |
-| `public-report` | GET | Fetch public report (no auth required) |
-| `init-user` | POST | Initialize user record on first sign-in |
-| `admin-accounts` | GET/POST | Admin-only account management |
-| `db-migrate` | POST | Run database migrations |
+Auto-deploys on push to `main` via Netlify (GitHub integration).
 
-## CSS Notes
+Netlify Site ID: `2c8e3afc-303f-4716-ad1b-8198cd30a4ec`
 
-- `index.css` defines theme variables consistent with other AIDigital Labs apps
-- Theme is applied via `applyTheme(aiLabsTheme)` from design system
-- Public report route uses hash-based routing: `#/share/TOKEN`
+## Standing Instructions
 
-## NPM Authentication
-
-`.npmrc` at repo root:
-```
-@boriskulakhmetov-aidigital:registry=https://npm.pkg.github.com
-//npm.pkg.github.com/:_authToken=${NPM_TOKEN}
-```
-
-For local dev: set `NPM_TOKEN` env var to the GitHub PAT (see design system CLAUDE.md for the token).
-
-## Architecture Reference
-
-This app is part of the AIDigital Labs portfolio. For the full architecture (all apps, design system, theme system, conventions), see `CLAUDE.md` in the design system repo: `AIDigital-Labs-Design-System`.
+- Execute all bash commands, git commits, pushes, API calls, and deploys without asking for confirmation
+- Always use `Co-Authored-By: Claude Opus 4.6 (1M context) <noreply@anthropic.com>` in commits
+- Use Unix paths with forward slashes (Git Bash on Windows)
+- Set `export PATH="/c/Program Files/nodejs:$PATH"` before npm commands
