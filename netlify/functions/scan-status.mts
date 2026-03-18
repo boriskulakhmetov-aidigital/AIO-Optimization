@@ -1,12 +1,11 @@
-import { getStore } from '@netlify/blobs';
 import { requireAuth } from './_shared/auth.js';
-import { getScanEngines } from './_shared/db.js';
+import { getScanEngines, readJobStatus } from './_shared/supabase.js';
 
 /**
  * GET /scan-status?id=<scanId>
  *
- * Returns current progress of a scan. Reads from Blobs first for speed,
- * falls back to DB if Blob is stale or missing.
+ * Returns current progress of a scan. Reads from job_status first for speed,
+ * falls back to DB if job_status is stale or missing.
  */
 export default async (req: Request) => {
   const url = new URL(req.url);
@@ -16,13 +15,12 @@ export default async (req: Request) => {
   try {
     await requireAuth(req);
 
-    // Try Blobs first (fast path)
-    const store = getStore('scan-progress');
-    const blobData = await store.get(scanId, { type: 'text' }).catch(() => null);
+    // Try job_status first (fast path)
+    const jobRow = await readJobStatus(scanId);
 
-    if (blobData) {
+    if (jobRow?.partial_text) {
       try {
-        const progress = JSON.parse(blobData);
+        const progress = JSON.parse(jobRow.partial_text);
         return Response.json(progress, { headers: { 'Cache-Control': 'no-store' } });
       } catch {
         // Fall through to DB

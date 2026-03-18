@@ -4,7 +4,7 @@ import {
   saveScanEngineSynthesis, updateScanEngineStatus,
   getScanEngines, areAllEnginesSynthesized,
   getScanById, updateScanStatus, createScanReview,
-} from './_shared/db.js';
+} from './_shared/supabase.js';
 import { getEngineName } from './_shared/engineRegistry.js';
 import { buildSynthesizerPrompt, formatQueriesForSynthesis } from './_shared/synthesizerPrompt.js';
 import type { EngineId, EngineSynthesis } from './_shared/types.js';

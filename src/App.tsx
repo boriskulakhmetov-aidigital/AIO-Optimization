@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, createContext, useContext, useRef } from 'react';
 import { AppShell, BrandMark, ChatPanel, ThemeToggle, useTheme } from '@boriskulakhmetov-aidigital/design-system';
 import type { AppShellContext } from '@boriskulakhmetov-aidigital/design-system';
+import { createClient } from '@supabase/supabase-js';
 import { SignIn, UserButton, useAuth } from '@clerk/react';
 import type { AppPhase } from './lib/types';
 import { useOrchestrator } from './hooks/useOrchestrator';
@@ -12,6 +13,12 @@ import { ScanDashboard } from './components/ScanDashboard';
 import { ScanSidebar } from './components/ScanSidebar';
 import { AIOReport } from './components/report/AIOReport';
 import type { AIOReportData, EngineId } from './lib/types';
+
+const supabaseConfig = import.meta.env.VITE_SUPABASE_URL ? {
+  url: import.meta.env.VITE_SUPABASE_URL as string,
+  anonKey: import.meta.env.VITE_SUPABASE_ANON_KEY as string,
+  createClient: createClient as any,
+} : undefined;
 
 // ── Bridge context so the sidebar (rendered by AppShell) can access domain state ──
 interface ScanBridge {
@@ -259,6 +266,7 @@ function ScanBridgeProvider() {
         activityLabel="Scan"
         detailEndpoint="get-scan"
         auth={{ SignIn: SignIn as any, UserButton, useAuth: useAuth as any }}
+        supabaseConfig={supabaseConfig}
         sidebar={<ConnectedSidebar />}
       >
         {(ctx) => {

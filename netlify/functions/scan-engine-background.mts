@@ -1,9 +1,9 @@
-import { getStore } from '@netlify/blobs';
 import {
   updateScanEngineStatus, incrementScanEngineProgress,
   getQueriesForEngine, updateQueryResult,
   getScanEngines, updateScanStatus,
-} from './_shared/db.js';
+  readJobStatus, writeJobStatus,
+} from './_shared/supabase.js';
 import { queryEngine } from './_shared/engineClient.js';
 import { getEngine } from './_shared/engineRegistry.js';
 import { RateLimiter, withRetry, runInBatches } from './_shared/rateLimiter.js';
@@ -23,7 +23,7 @@ import type { EngineId } from './_shared/types.js';
  * - Controlled concurrency (per engine maxConcurrency setting)
  * - Rate limiting (sliding window, per engine rateLimitPerMin)
  * - Retry with exponential backoff (1s, 4s, 16s — max 3 retries)
- * - Blob progress updates every 5 completed queries
+ * - job_status progress updates every 5 completed queries
  */
 export default async (req: Request) => {
   if (req.method !== 'POST') {
@@ -48,14 +48,13 @@ export default async (req: Request) => {
 
   const { scanId, engineId, engineJobId } = body;
   console.log(`[scan-engine-background] Starting engine=${engineId} scan=${scanId} job=${engineJobId}`);
-  const store = getStore('scan-progress');
   const engineConfig = getEngine(engineId);
   const rateLimiter = new RateLimiter(engineId);
 
   try {
     // Mark engine as querying
     await updateScanEngineStatus(engineJobId, 'querying');
-    await updateBlobProgress(store, scanId, engineId, 'querying', 0, 0);
+    await updateJobProgress(scanId, engineId, 'querying', 0, 0);
 
     // Get all queries for this engine
     const queries = await getQueriesForEngine(engineJobId);
@@ -112,16 +111,16 @@ export default async (req: Request) => {
           ts: Date.now(),
         };
 
-        // Update Blob progress every 3 queries or on last query (more frequent for live feel)
+        // Update job_status progress every 3 queries or on last query
         if (completed % 3 === 0 || completed === totalQueries) {
-          await updateBlobProgress(store, scanId, engineId, 'querying', completed, totalQueries, snippet);
+          await updateJobProgress(scanId, engineId, 'querying', completed, totalQueries, snippet);
         }
       },
     );
 
     // All queries done — mark engine as complete
     await updateScanEngineStatus(engineJobId, 'complete');
-    await updateBlobProgress(store, scanId, engineId, 'complete', completed, totalQueries);
+    await updateJobProgress(scanId, engineId, 'complete', completed, totalQueries);
 
     console.log(
       `Engine ${engineId} complete: ${completed - failed}/${totalQueries} ok, ${failed} failed`
@@ -153,7 +152,7 @@ export default async (req: Request) => {
   } catch (err) {
     console.error(`scan-engine-background fatal error (${engineId}):`, err);
     await updateScanEngineStatus(engineJobId, 'error', String(err));
-    await updateBlobProgress(store, scanId, engineId, 'error', 0, 0);
+    await updateJobProgress(scanId, engineId, 'error', 0, 0);
   }
 
   return new Response('Accepted', { status: 202 });
@@ -170,8 +169,7 @@ interface Snippet {
   ts: number;
 }
 
-async function updateBlobProgress(
-  store: ReturnType<typeof getStore>,
+async function updateJobProgress(
   scanId: string,
   engineId: string,
   engineStatus: string,
@@ -180,8 +178,10 @@ async function updateBlobProgress(
   snippet?: Snippet,
 ) {
   try {
-    const raw = await store.get(scanId, { type: 'text' }).catch(() => null);
-    const progress = raw ? JSON.parse(raw) : { scan_id: scanId, status: 'scanning', engines: [], feed: [] };
+    const existing = await readJobStatus(scanId);
+    const progress = existing?.partial_text
+      ? JSON.parse(existing.partial_text)
+      : { scan_id: scanId, status: 'scanning', engines: [], feed: [] };
 
     const engineIdx = progress.engines.findIndex((e: { engine_id: string }) => e.engine_id === engineId);
     const engineData: Record<string, unknown> = {
@@ -192,7 +192,6 @@ async function updateBlobProgress(
     if (snippet) {
       engineData.latest_snippet = snippet;
     } else if (engineIdx >= 0 && progress.engines[engineIdx].latest_snippet) {
-      // Preserve existing snippet if none provided
       engineData.latest_snippet = progress.engines[engineIdx].latest_snippet;
     }
 
@@ -219,8 +218,11 @@ async function updateBlobProgress(
       progress.status = 'error';
     }
 
-    await store.set(scanId, JSON.stringify(progress));
+    await writeJobStatus(scanId, {
+      status: progress.status === 'complete' ? 'complete' : progress.status === 'error' ? 'error' : 'streaming',
+      partial_text: JSON.stringify(progress),
+    });
   } catch (err) {
-    console.warn('Blob progress update failed:', err);
+    console.warn('Job status progress update failed:', err);
   }
 }

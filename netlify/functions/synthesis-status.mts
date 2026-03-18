@@ -1,5 +1,5 @@
 import { requireAuth } from './_shared/auth.js';
-import { getScanById, getScanEngines, getScanReview } from './_shared/db.js';
+import { getScanById, getScanEngines, getScanReview } from './_shared/supabase.js';
 
 /**
  * GET /synthesis-status?id=<scanId>

@@ -1,5 +1,5 @@
 import { requireAuth } from './_shared/auth.js';
-import { getUserStatus } from './_shared/db.js';
+import { getUserStatus } from './_shared/supabase.js';
 import { ENGINE_REGISTRY } from './_shared/engineRegistry.js';
 
 /**

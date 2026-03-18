@@ -1,5 +1,5 @@
 import { requireAuth, isAdminUser } from './_shared/auth.js';
-import { getScan, adminGetScan, getScanEngines, getScanReview } from './_shared/db.js';
+import { getScan, adminGetScan, getScanEngines, getScanReview } from './_shared/supabase.js';
 
 /**
  * GET /get-scan?id=<scanId>

@@ -1,9 +1,8 @@
-import { getStore } from '@netlify/blobs';
 import { requireAuth } from './_shared/auth.js';
 import {
   createScan, updateScanStatus, createScanEngine,
-  bulkInsertQueries, incrementUserScanCount,
-} from './_shared/db.js';
+  bulkInsertQueries, incrementUserScanCount, writeJobStatus,
+} from './_shared/supabase.js';
 import { getEngine } from './_shared/engineRegistry.js';
 import type { ConceptType, EngineId, GeneratedQuery } from './_shared/types.js';
 
@@ -103,20 +102,22 @@ export default async (req: Request) => {
       await bulkInsertQueries(queryRecords);
     }
 
-    // 4. Set initial progress in Blobs for fast polling
-    const store = getStore('scan-progress');
+    // 4. Set initial progress in job_status for fast polling
     const initialProgress = {
-      scan_id: scanId,
-      status: 'scanning',
-      engines: availableEngines.map(eid => ({
-        engine_id: eid,
-        status: 'pending',
-        queries_total: queries.length,
-        queries_done: 0,
-      })),
-      skipped_engines: skippedEngines,
+      status: 'scanning' as const,
+      partial_text: JSON.stringify({
+        scan_id: scanId,
+        status: 'scanning',
+        engines: availableEngines.map(eid => ({
+          engine_id: eid,
+          status: 'pending',
+          queries_total: queries.length,
+          queries_done: 0,
+        })),
+        skipped_engines: skippedEngines,
+      }),
     };
-    await store.set(scanId, JSON.stringify(initialProgress));
+    await writeJobStatus(scanId, initialProgress);
 
     // 5. Update scan status to scanning
     await updateScanStatus(scanId, 'scanning');

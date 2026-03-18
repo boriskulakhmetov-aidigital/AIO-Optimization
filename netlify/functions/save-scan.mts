@@ -1,5 +1,5 @@
 import { requireAuth } from './_shared/auth.js';
-import { createScan, updateScanMessages, softDeleteScan } from './_shared/db.js';
+import { createScan, updateScanMessages, softDeleteScan } from './_shared/supabase.js';
 import type { ConceptType } from './_shared/types.js';
 
 /**

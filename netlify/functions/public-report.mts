@@ -1,4 +1,4 @@
-import { getScanByShareToken } from './_shared/db.js';
+import { getScanByShareToken } from './_shared/supabase.js';
 
 export default async (req: Request) => {
   const url = new URL(req.url);

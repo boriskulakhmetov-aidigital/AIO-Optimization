@@ -1,5 +1,5 @@
 import { verifyToken, createClerkClient } from '@clerk/backend';
-import { getUserStatus } from './db.js';
+import { getUserStatus } from './supabase.js';
 
 /** Extract and verify the Clerk session token from the Authorization header.
  *  Returns { userId, email } or throws on failure. */

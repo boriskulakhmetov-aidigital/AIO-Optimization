@@ -1,5 +1,5 @@
 import { requireAuth, isAdminUser } from './_shared/auth.js';
-import { setScanShare, adminGetScanShare } from './_shared/db.js';
+import { setScanShare, adminGetScanShare } from './_shared/supabase.js';
 
 export default async (req: Request) => {
   const url = new URL(req.url);

@@ -2,10 +2,10 @@ import { GoogleGenAI } from '@google/genai';
 import {
   getScanById, getScanEngines, getScanReview,
   saveScanReview, saveScanReportData, updateScanStatus,
-} from './_shared/db.js';
+  getQueriesForScan,
+} from './_shared/supabase.js';
 import { getEngineName } from './_shared/engineRegistry.js';
 import { buildReviewerPrompt, formatSynthesesForReview } from './_shared/reviewerPrompt.js';
-import { getQueriesForScan } from './_shared/db.js';
 import type {
   EngineId, CrossEngineReview, AIOReportData,
   EngineSynthesis, QueryLogEntry,
