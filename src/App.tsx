@@ -272,6 +272,7 @@ function ScanBridgeProvider() {
         detailEndpoint="get-scan"
         auth={{ SignIn: SignIn as any, UserButton, useAuth: useAuth as any }}
         supabaseConfig={supabaseConfig}
+        helpUrl="/help"
         sidebar={<ConnectedSidebar />}
       >
         {(ctx) => {
