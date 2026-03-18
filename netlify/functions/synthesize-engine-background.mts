@@ -8,6 +8,7 @@ import {
 import { getEngineName } from './_shared/engineRegistry.js';
 import { buildSynthesizerPrompt, formatQueriesForSynthesis } from './_shared/synthesizerPrompt.js';
 import type { EngineId, EngineSynthesis } from './_shared/types.js';
+import { log } from './_shared/logger.js';
 
 /**
  * POST /synthesize-engine-background  (background function)
@@ -36,6 +37,9 @@ export default async (req: Request) => {
     scanId: string;
     engineJobId: string;
   };
+
+  const startTime = Date.now();
+  log.info('synthesis.start', { function_name: 'synthesize-engine-background', entity_type: 'scan', entity_id: engineJobId, correlation_id: scanId, ai_provider: 'gemini', ai_model: 'gemini-3.1-pro-preview' });
 
   try {
     // Load engine info and scan context
@@ -138,6 +142,7 @@ export default async (req: Request) => {
     // Save synthesis
     await saveScanEngineSynthesis(engineJobId, synthesisData as EngineSynthesis);
 
+    log.info('synthesis.complete', { function_name: 'synthesize-engine-background', entity_type: 'scan', entity_id: engineJobId, correlation_id: scanId, ai_provider: 'gemini', ai_model: 'gemini-3.1-pro-preview', duration_ms: Date.now() - startTime, meta: { engine_id: engineId, ai_sov: synthesis.ai_sov } });
     console.log(`Synthesis complete for ${engineName}: AI-SOV=${synthesis.ai_sov}%, RSI=${synthesis.recommendation_strength_index}`);
 
     // Check if all engines are done and trigger review
@@ -145,6 +150,7 @@ export default async (req: Request) => {
 
   } catch (err) {
     console.error(`synthesize-engine-background error (${engineJobId}):`, err);
+    log.error('synthesis.error', { function_name: 'synthesize-engine-background', entity_type: 'scan', entity_id: engineJobId, correlation_id: scanId, error: err, error_category: 'gemini_api', duration_ms: Date.now() - startTime });
     await updateScanEngineStatus(engineJobId, 'error', `Synthesis failed: ${err}`);
   }
 

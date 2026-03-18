@@ -12,6 +12,12 @@ function getSupabase() {
   return createClient(supabaseUrl, supabaseKey);
 }
 
+export const supabase = new Proxy({} as ReturnType<typeof createClient>, {
+  get(_, prop) {
+    return (getSupabase() as any)[prop];
+  },
+});
+
 // ── Migrations ────────────────────────────────────────────────────────────────
 // Tables are managed via Supabase dashboard / migrations. This is a no-op kept
 // for backward compatibility so callers that call migrateDb() don't break.

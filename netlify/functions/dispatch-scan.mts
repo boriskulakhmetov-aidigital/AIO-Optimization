@@ -5,6 +5,7 @@ import {
 } from './_shared/supabase.js';
 import { getEngine } from './_shared/engineRegistry.js';
 import type { ConceptType, EngineId, GeneratedQuery } from './_shared/types.js';
+import { log } from './_shared/logger.js';
 
 /**
  * POST /dispatch-scan
@@ -49,6 +50,8 @@ export default async (req: Request) => {
     if (!scanId || !config || !queries?.length) {
       return Response.json({ error: 'Missing scanId, config, or queries' }, { status: 400 });
     }
+
+    log.info('scan.dispatch', { function_name: 'dispatch-scan', entity_type: 'scan', entity_id: scanId, user_id: userId, user_email: email, correlation_id: scanId, meta: { engines: config.engines, query_count: queries.length } });
 
     // 1. Create the scan record
     await createScan({

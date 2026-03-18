@@ -8,6 +8,7 @@ import { queryEngine } from './_shared/engineClient.js';
 import { getEngine } from './_shared/engineRegistry.js';
 import { RateLimiter, withRetry, runInBatches } from './_shared/rateLimiter.js';
 import type { EngineId } from './_shared/types.js';
+import { log } from './_shared/logger.js';
 
 /**
  * POST /scan-engine-background  (background function)
@@ -50,6 +51,8 @@ export default async (req: Request) => {
   console.log(`[scan-engine-background] Starting engine=${engineId} scan=${scanId} job=${engineJobId}`);
   const engineConfig = getEngine(engineId);
   const rateLimiter = new RateLimiter(engineId);
+  const startTime = Date.now();
+  log.info('scan.engine.start', { function_name: 'scan-engine-background', entity_type: 'scan', entity_id: engineJobId, correlation_id: scanId, meta: { engine_id: engineId } });
 
   try {
     // Mark engine as querying
@@ -122,6 +125,7 @@ export default async (req: Request) => {
     await updateScanEngineStatus(engineJobId, 'complete');
     await updateJobProgress(scanId, engineId, 'complete', completed, totalQueries);
 
+    log.info('scan.engine.complete', { function_name: 'scan-engine-background', entity_type: 'scan', entity_id: engineJobId, correlation_id: scanId, duration_ms: Date.now() - startTime, meta: { engine_id: engineId, completed: completed - failed, failed, total: totalQueries } });
     console.log(
       `Engine ${engineId} complete: ${completed - failed}/${totalQueries} ok, ${failed} failed`
     );
@@ -151,6 +155,7 @@ export default async (req: Request) => {
 
   } catch (err) {
     console.error(`scan-engine-background fatal error (${engineId}):`, err);
+    log.error('scan.engine.error', { function_name: 'scan-engine-background', entity_type: 'scan', entity_id: engineJobId, correlation_id: scanId, error: err, error_category: 'engine_api', duration_ms: Date.now() - startTime, meta: { engine_id: engineId } });
     await updateScanEngineStatus(engineJobId, 'error', String(err));
     await updateJobProgress(scanId, engineId, 'error', 0, 0);
   }

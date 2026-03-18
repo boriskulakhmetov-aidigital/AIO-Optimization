@@ -1,5 +1,6 @@
 import { verifyToken, createClerkClient } from '@clerk/backend';
 import { getUserStatus } from './supabase.js';
+import { log } from './logger.js';
 
 /** Extract and verify the Clerk session token from the Authorization header.
  *  Returns { userId, email } or throws on failure. */
@@ -9,7 +10,10 @@ export async function requireAuth(req: Request): Promise<{ userId: string; email
 
   const authHeader = req.headers.get('Authorization');
   const token = authHeader?.replace('Bearer ', '').trim();
-  if (!token) throw new Error('Unauthorized');
+  if (!token) {
+    log.warn('auth.failure', { function_name: 'auth', message: 'Unauthorized', meta: { endpoint: req.url } });
+    throw new Error('Unauthorized');
+  }
 
   // verifyToken is a standalone function in @clerk/backend Core 3
   const payload = await verifyToken(token, { secretKey });

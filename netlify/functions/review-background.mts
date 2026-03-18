@@ -10,6 +10,7 @@ import type {
   EngineId, CrossEngineReview, AIOReportData,
   EngineSynthesis, QueryLogEntry,
 } from './_shared/types.js';
+import { log } from './_shared/logger.js';
 
 /**
  * POST /review-background  (background function)
@@ -34,6 +35,8 @@ export default async (req: Request) => {
   }
 
   const { scanId } = body as { scanId: string };
+  const startTime = Date.now();
+  log.info('review.start', { function_name: 'review-background', entity_type: 'scan', entity_id: scanId, correlation_id: scanId, ai_provider: 'gemini', ai_model: 'gemini-3.1-pro-preview' });
 
   try {
     // Load scan and engine data
@@ -151,10 +154,12 @@ export default async (req: Request) => {
     await saveScanReportData(scanId, reportData);
     // saveScanReportData already sets status to 'complete'
 
+    log.info('review.complete', { function_name: 'review-background', entity_type: 'scan', entity_id: scanId, correlation_id: scanId, ai_provider: 'gemini', ai_model: 'gemini-3.1-pro-preview', duration_ms: Date.now() - startTime, meta: { ai_sov: review.overall_ai_sov, action_items: review.action_items?.length ?? 0 } });
     console.log(`Review complete for scan ${scanId}: AI-SOV=${review.overall_ai_sov}%, ${review.action_items?.length ?? 0} action items`);
 
   } catch (err) {
     console.error(`review-background error (${scanId}):`, err);
+    log.error('review.error', { function_name: 'review-background', entity_type: 'scan', entity_id: scanId, correlation_id: scanId, error: err, error_category: 'gemini_api', duration_ms: Date.now() - startTime });
     await updateScanStatus(scanId, 'error', `Review failed: ${err}`);
   }
 
