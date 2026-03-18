@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import type { AIOReportData } from '../../lib/types';
+import type { SupabaseClient } from '@boriskulakhmetov-aidigital/design-system';
 import { ReportHeader } from './ReportHeader';
 import { KPIOverview } from './KPIOverview';
 import { EngineAwareness } from './EngineAwareness';
@@ -14,10 +15,10 @@ interface AIOReportProps {
   conceptName: string;
   onNewScan: () => void;
   scanId?: string | null;
-  authFetch?: (url: string, options?: RequestInit) => Promise<Response>;
+  supabase?: SupabaseClient | null;
 }
 
-export function AIOReport({ data, conceptName, onNewScan, scanId, authFetch }: AIOReportProps) {
+export function AIOReport({ data, conceptName, onNewScan, scanId, supabase }: AIOReportProps) {
   const [activePage, setActivePage] = useState<ReportPage>('overview');
   const [selectedEngine, setSelectedEngine] = useState<string | null>(null);
 
@@ -41,7 +42,7 @@ export function AIOReport({ data, conceptName, onNewScan, scanId, authFetch }: A
         conceptName={conceptName}
         onNewScan={onNewScan}
         scanId={scanId ?? null}
-        authFetch={authFetch ?? (async (url, opts) => fetch(url, opts))}
+        supabase={supabase ?? null}
       />
 
       <nav className="aio-report__nav">

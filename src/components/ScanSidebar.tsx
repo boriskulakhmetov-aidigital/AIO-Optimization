@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import type { SupabaseClient } from '@boriskulakhmetov-aidigital/design-system';
 
 interface ScanItem {
   id: string;
@@ -15,21 +16,26 @@ interface ScanSidebarProps {
   onSelectScan: (id: string) => void;
   onNewScan: () => void;
   onDeleteScan: (id: string) => void;
-  authFetch: (url: string, options?: RequestInit) => Promise<Response>;
+  supabase: SupabaseClient | null;
 }
 
 export function ScanSidebar({
   refreshKey, currentScanId, loadingScanId,
-  onSelectScan, onNewScan, onDeleteScan, authFetch,
+  onSelectScan, onNewScan, onDeleteScan, supabase,
 }: ScanSidebarProps) {
   const [scans, setScans] = useState<ScanItem[]>([]);
 
   useEffect(() => {
-    authFetch('/.netlify/functions/list-scans')
-      .then(r => r.json())
-      .then(data => setScans(data.scans ?? []))
+    if (!supabase) return;
+    (supabase as any)
+      .from('scans')
+      .select('id, concept_name, concept_type, status, created_at')
+      .or('deleted_by_user.is.null,deleted_by_user.eq.false')
+      .order('created_at', { ascending: false })
+      .limit(100)
+      .then(({ data }: any) => setScans(data ?? []))
       .catch(console.warn);
-  }, [refreshKey]);
+  }, [refreshKey, supabase]);
 
   return (
     <aside className="sidebar">

@@ -1,5 +1,9 @@
 import { useState, useEffect } from 'react';
+import { createClient } from '@supabase/supabase-js';
 import { BrandMark } from '@boriskulakhmetov-aidigital/design-system';
+
+const supabaseUrl = import.meta.env.VITE_SUPABASE_URL as string;
+const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string;
 
 export function PublicReportPage() {
   const token = window.location.pathname.replace(/^\/r\//, '').split('/')[0];
@@ -9,19 +13,30 @@ export function PublicReportPage() {
 
   useEffect(() => {
     if (!token) { setState('error'); setErrorMsg('Invalid report link.'); return; }
-    fetch(`/.netlify/functions/public-report?token=${encodeURIComponent(token)}`)
-      .then(async r => {
-        if (!r.ok) {
-          const d = await r.json().catch(() => ({}));
-          throw new Error((d as { error?: string }).error ?? `Error ${r.status}`);
+    if (!supabaseUrl || !supabaseAnonKey) { setState('error'); setErrorMsg('Supabase not configured.'); return; }
+
+    const sb = createClient(supabaseUrl, supabaseAnonKey);
+    (sb as any)
+      .from('scans')
+      .select('report_data, concept_name, concept_type, is_public')
+      .eq('share_token', token)
+      .eq('is_public', true)
+      .single()
+      .then(({ data, error }: any) => {
+        if (error || !data) {
+          setErrorMsg('Report not found or is private.');
+          setState('error');
+          return;
         }
-        return r.json();
-      })
-      .then(data => {
-        setReport((data as { report_data: Record<string, unknown> }).report_data);
+        if (!data.report_data) {
+          setErrorMsg('Report not ready yet.');
+          setState('error');
+          return;
+        }
+        setReport(data.report_data);
         setState('ready');
       })
-      .catch(err => {
+      .catch((err: any) => {
         setErrorMsg(String(err instanceof Error ? err.message : err));
         setState('error');
       });

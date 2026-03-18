@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, createContext, useContext, useRef } from 'react';
 import { AppShell, BrandMark, ChatPanel, ThemeToggle, useTheme } from '@boriskulakhmetov-aidigital/design-system';
-import type { AppShellContext } from '@boriskulakhmetov-aidigital/design-system';
+import type { AppShellContext, SupabaseClient } from '@boriskulakhmetov-aidigital/design-system';
 import { createClient } from '@supabase/supabase-js';
 import { SignIn, UserButton, useAuth } from '@clerk/react';
 import type { AppPhase } from './lib/types';
@@ -25,7 +25,7 @@ interface ScanBridge {
   scanId: string | null;
   loadingScanId: string | null;
   sidebarRefreshKey: number;
-  authFetch: (url: string, options?: RequestInit) => Promise<Response>;
+  supabase: SupabaseClient | null;
   onSelectScan: (id: string) => void;
   onNewScan: () => void;
   onDeleteScan: (id: string) => void;
@@ -61,6 +61,10 @@ function ScanBridgeProvider() {
   const authFetchRef = useRef<(url: string, options?: RequestInit) => Promise<Response>>(
     () => Promise.reject(new Error('authFetch not ready')),
   );
+
+  // supabase client ref — injected by AppShell via children callback
+  const supabaseRef = useRef<SupabaseClient | null>(null);
+  const [supabase, setSupabase] = useState<SupabaseClient | null>(null);
 
   // Stable wrapper that always delegates to the latest ref
   const authFetch = useCallback(
@@ -176,11 +180,14 @@ function ScanBridgeProvider() {
     if (synthesisStatus.phase === 'reviewing' && phase === 'synthesizing') {
       setPhase('reviewing');
     } else if (synthesisStatus.phase === 'complete' && (phase === 'synthesizing' || phase === 'reviewing')) {
-      if (scanId) {
-        authFetch(`/.netlify/functions/get-scan?id=${encodeURIComponent(scanId)}`)
-          .then(r => r.json())
-          .then(data => {
-            if (data.scan?.report_data) setReportData(data.scan.report_data as AIOReportData);
+      if (scanId && supabaseRef.current) {
+        supabaseRef.current
+          .from('scans')
+          .select('report_data')
+          .eq('id', scanId)
+          .single()
+          .then(({ data }: any) => {
+            if (data?.report_data) setReportData(data.report_data as AIOReportData);
           })
           .catch(console.warn);
       }
@@ -208,12 +215,14 @@ function ScanBridgeProvider() {
   }
 
   async function handleLoadScan(id: string) {
+    if (!supabaseRef.current) return;
     setLoadingScanId(id);
     try {
-      const res = await authFetch(`/.netlify/functions/get-scan?id=${encodeURIComponent(id)}`);
-      if (!res.ok) return;
-      const data = await res.json();
-      const scan = data.scan;
+      const { data: scan } = await (supabaseRef.current as any)
+        .from('scans')
+        .select('*')
+        .eq('id', id)
+        .single();
       if (!scan) return;
 
       setScanId(scan.id);
@@ -240,11 +249,14 @@ function ScanBridgeProvider() {
   }
 
   async function handleDeleteScan(id: string) {
-    authFetch('/.netlify/functions/save-scan', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'delete', id }),
-    }).catch(console.warn);
+    if (supabaseRef.current) {
+      (supabaseRef.current as any)
+        .from('scans')
+        .update({ deleted_by_user: true })
+        .eq('id', id)
+        .then(() => {})
+        .catch(console.warn);
+    }
     if (scanId === id) handleNewScan();
     setSidebarRefreshKey(k => k + 1);
   }
@@ -253,7 +265,7 @@ function ScanBridgeProvider() {
     scanId,
     loadingScanId,
     sidebarRefreshKey,
-    authFetch,
+    supabase,
     onSelectScan: handleLoadScan,
     onNewScan: handleNewScan,
     onDeleteScan: handleDeleteScan,
@@ -270,8 +282,12 @@ function ScanBridgeProvider() {
         sidebar={<ConnectedSidebar />}
       >
         {(ctx) => {
-          // Keep the ref in sync so the stable authFetch wrapper works
+          // Keep the refs in sync so the stable wrappers work
           authFetchRef.current = ctx.authFetch;
+          if (ctx.supabase && ctx.supabase !== supabaseRef.current) {
+            supabaseRef.current = ctx.supabase;
+            setSupabase(ctx.supabase);
+          }
 
           return (
             <>
@@ -323,7 +339,7 @@ function ScanBridgeProvider() {
                   conceptName={conceptName}
                   onNewScan={handleNewScan}
                   scanId={scanId}
-                  authFetch={ctx.authFetch}
+                  supabase={ctx.supabase}
                 />
               )}
 
@@ -371,7 +387,7 @@ function ConnectedSidebar() {
       onSelectScan={bridge.onSelectScan}
       onNewScan={bridge.onNewScan}
       onDeleteScan={bridge.onDeleteScan}
-      authFetch={bridge.authFetch}
+      supabase={bridge.supabase}
     />
   );
 }
@@ -385,16 +401,30 @@ function PublicReport({ token }: { token: string }) {
   const { theme, toggle: toggleTheme } = useTheme();
 
   useEffect(() => {
-    fetch(`/.netlify/functions/public-report?token=${encodeURIComponent(token)}`)
-      .then(r => {
-        if (!r.ok) throw new Error(r.status === 403 ? 'This report is private' : 'Report not found');
-        return r.json();
-      })
-      .then(data => {
+    if (!supabaseConfig) {
+      setError('Supabase not configured');
+      return;
+    }
+    const publicSb = createClient(supabaseConfig.url, supabaseConfig.anonKey);
+    (publicSb as any)
+      .from('scans')
+      .select('report_data, concept_name, concept_type, is_public')
+      .eq('share_token', token)
+      .eq('is_public', true)
+      .single()
+      .then(({ data, error: sbErr }: any) => {
+        if (sbErr || !data) {
+          setError('Report not found or is private');
+          return;
+        }
+        if (!data.report_data) {
+          setError('Report not ready yet');
+          return;
+        }
         setReportData(data.report_data as AIOReportData);
         setConceptName(data.concept_name ?? '');
       })
-      .catch(err => setError(String(err)));
+      .catch((err: any) => setError(String(err)));
   }, [token]);
 
   return (

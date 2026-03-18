@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import type { AIOReportData } from '../../lib/types';
+import type { SupabaseClient } from '@boriskulakhmetov-aidigital/design-system';
 import { PageHeader } from '@boriskulakhmetov-aidigital/design-system';
 
 interface ReportHeaderProps {
@@ -7,10 +8,10 @@ interface ReportHeaderProps {
   conceptName: string;
   onNewScan: () => void;
   scanId: string | null;
-  authFetch: (url: string, options?: RequestInit) => Promise<Response>;
+  supabase: SupabaseClient | null;
 }
 
-export function ReportHeader({ data, conceptName, onNewScan, scanId, authFetch }: ReportHeaderProps) {
+export function ReportHeader({ data, conceptName, onNewScan, scanId, supabase }: ReportHeaderProps) {
   const [showShareModal, setShowShareModal] = useState(false);
   const [shareState, setShareState] = useState<{ token: string; isPublic: boolean } | null>(null);
   const [shareLoading, setShareLoading] = useState(false);
@@ -49,20 +50,27 @@ export function ReportHeader({ data, conceptName, onNewScan, scanId, authFetch }
   }
 
   async function handleShare() {
-    if (!scanId) return;
+    if (!scanId || !supabase) return;
     setShowShareModal(true);
     setShareLoading(true);
     try {
-      // Generate share token (or get existing)
-      const res = await authFetch(`/.netlify/functions/report-share?id=${encodeURIComponent(scanId)}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ is_public: shareState?.isPublic ?? false }),
-      });
-      if (res.ok) {
-        const data = await res.json();
-        setShareState({ token: data.share_token, isPublic: data.is_public });
-      }
+      // Get existing share state
+      const { data: row } = await (supabase as any)
+        .from('scans')
+        .select('share_token, is_public')
+        .eq('id', scanId)
+        .single();
+
+      const isPublic = shareState?.isPublic ?? row?.is_public ?? false;
+      const shareToken = row?.share_token || crypto.randomUUID();
+
+      // Update with share token
+      await (supabase as any)
+        .from('scans')
+        .update({ share_token: shareToken, is_public: isPublic })
+        .eq('id', scanId);
+
+      setShareState({ token: shareToken, isPublic });
     } catch (err) {
       console.warn('Share failed:', err);
     } finally {
@@ -71,18 +79,17 @@ export function ReportHeader({ data, conceptName, onNewScan, scanId, authFetch }
   }
 
   async function togglePublic(isPublic: boolean) {
-    if (!scanId) return;
+    if (!scanId || !supabase) return;
     setShareLoading(true);
     try {
-      const res = await authFetch(`/.netlify/functions/report-share?id=${encodeURIComponent(scanId)}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ is_public: isPublic }),
-      });
-      if (res.ok) {
-        const data = await res.json();
-        setShareState({ token: data.share_token, isPublic: data.is_public });
-      }
+      const shareToken = shareState?.token || crypto.randomUUID();
+
+      await (supabase as any)
+        .from('scans')
+        .update({ share_token: shareToken, is_public: isPublic })
+        .eq('id', scanId);
+
+      setShareState({ token: shareToken, isPublic });
     } catch (err) {
       console.warn('Toggle share failed:', err);
     } finally {
