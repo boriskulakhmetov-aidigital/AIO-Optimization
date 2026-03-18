@@ -349,51 +349,6 @@ export async function getScanByShareToken(token: string) {
   return data ?? null;
 }
 
-// ── Admin Queries ────────────────────────────────────────────────────────────
-
-export async function adminListAccounts() {
-  const sb = getSupabase();
-  const { data } = await sb.rpc('admin_list_accounts');
-  if (data) return data;
-  return [];
-}
-
-export async function adminListUsers(domain?: string) {
-  const sb = getSupabase();
-  if (domain) {
-    const { data } = await sb.rpc('admin_list_users_by_domain', { p_domain: domain });
-    return data ?? [];
-  }
-  const { data } = await sb.rpc('admin_list_users');
-  return data ?? [];
-}
-
-export async function adminGetUserScans(userId: string) {
-  const sb = getSupabase();
-  const { data } = await sb
-    .from('scans')
-    .select('id, concept_name, concept_type, status, created_at, completed_at, deleted_by_user')
-    .eq('user_id', userId)
-    .order('created_at', { ascending: false });
-  return data ?? [];
-}
-
-export async function adminGetScan(id: string) {
-  const sb = getSupabase();
-  const { data } = await sb.from('scans').select('*').eq('id', id).maybeSingle();
-  return data ?? null;
-}
-
-export async function adminGetScanShare(id: string) {
-  const sb = getSupabase();
-  const { data } = await sb
-    .from('scans')
-    .select('share_token, is_public')
-    .eq('id', id)
-    .maybeSingle();
-  return data ?? null;
-}
-
 // ── Job Status (replaces Netlify Blobs) ──────────────────────────────────────
 
 export async function writeJobStatus(jobId: string, payload: Record<string, unknown>) {
