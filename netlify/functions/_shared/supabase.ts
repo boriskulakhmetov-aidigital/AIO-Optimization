@@ -18,68 +18,7 @@ export const supabase = new Proxy({} as ReturnType<typeof createClient>, {
   },
 });
 
-// ── Migrations ────────────────────────────────────────────────────────────────
-// Tables are managed via Supabase dashboard / migrations. This is a no-op kept
-// for backward compatibility so callers that call migrateDb() don't break.
-
-export async function migrateDb() {
-  // No-op — schema is managed in Supabase directly.
-}
-
 // ── User Management ──────────────────────────────────────────────────────────
-
-export async function upsertUser(userId: string, email: string | null, orgDomain: string | null) {
-  const sb = getSupabase();
-
-  // Claim a pre-registered row if one exists for this email
-  if (email) {
-    const { data: pre } = await sb
-      .from('app_users')
-      .select('user_id')
-      .eq('user_email', email)
-      .eq('user_id', 'pre:' + email);
-
-    if (pre && pre.length > 0) {
-      await sb
-        .from('app_users')
-        .update({ user_id: userId, updated_at: new Date().toISOString() })
-        .eq('user_id', 'pre:' + email);
-      return;
-    }
-  }
-
-  const isAiDigital = email?.toLowerCase().endsWith('@aidigital.com') ?? false;
-  const initialStatus = isAiDigital ? 'active' : 'trial';
-
-  // Check if user already exists — don't overwrite status on existing users
-  const { data: existing } = await sb.from('app_users').select('user_id').eq('user_id', userId).single();
-  if (existing) {
-    // Existing user — update email/domain but preserve status
-    await sb.from('app_users').update({
-      user_email: email,
-      org_domain: orgDomain || undefined,
-      updated_at: new Date().toISOString(),
-    }).eq('user_id', userId);
-  } else {
-    // New user — set initial status
-    await sb.from('app_users').insert({
-      user_id: userId,
-      user_email: email,
-      org_domain: orgDomain,
-      status: initialStatus,
-      updated_at: new Date().toISOString(),
-    });
-  }
-
-  // Preserve existing org_domain if already set
-  if (orgDomain === null) {
-    await sb
-      .from('app_users')
-      .update({ updated_at: new Date().toISOString() })
-      .eq('user_id', userId)
-      .not('org_domain', 'is', null);
-  }
-}
 
 export async function getUserStatus(userId: string) {
   const sb = getSupabase();
@@ -107,30 +46,6 @@ export async function incrementUserScanCount(userId: string) {
     .from('app_users')
     .update({ scan_count: newCount, status: newStatus, updated_at: new Date().toISOString() })
     .eq('user_id', userId);
-}
-
-export async function adminSetUserStatus(userId: string, status: string) {
-  const sb = getSupabase();
-  if (status === 'admin') {
-    await sb
-      .from('app_users')
-      .update({ status, updated_at: new Date().toISOString() })
-      .eq('user_id', userId)
-      .ilike('user_email', '%@aidigital.com');
-  } else {
-    await sb
-      .from('app_users')
-      .update({ status, updated_at: new Date().toISOString() })
-      .eq('user_id', userId);
-  }
-}
-
-export async function adminSetOrgStatus(orgDomain: string, status: string) {
-  const sb = getSupabase();
-  await sb
-    .from('app_users')
-    .update({ status, updated_at: new Date().toISOString() })
-    .eq('org_domain', orgDomain);
 }
 
 // ── Scan Management ──────────────────────────────────────────────────────────
@@ -191,38 +106,6 @@ export async function saveScanReportData(id: string, reportData: AIOReportData) 
     .eq('id', id);
 }
 
-export async function softDeleteScan(id: string, userId: string) {
-  const sb = getSupabase();
-  await sb
-    .from('scans')
-    .update({ deleted_by_user: true })
-    .eq('id', id)
-    .eq('user_id', userId);
-}
-
-export async function listUserScans(userId: string) {
-  const sb = getSupabase();
-  const { data } = await sb
-    .from('scans')
-    .select('id, concept_name, concept_type, status, created_at, completed_at')
-    .eq('user_id', userId)
-    .or('deleted_by_user.is.null,deleted_by_user.eq.false')
-    .order('created_at', { ascending: false })
-    .limit(100);
-  return data ?? [];
-}
-
-export async function getScan(id: string, userId: string) {
-  const sb = getSupabase();
-  const { data } = await sb
-    .from('scans')
-    .select('*')
-    .eq('id', id)
-    .eq('user_id', userId)
-    .maybeSingle();
-  return data ?? null;
-}
-
 export async function getScanById(id: string) {
   const sb = getSupabase();
   const { data } = await sb.from('scans').select('*').eq('id', id).maybeSingle();
@@ -266,15 +149,8 @@ export async function updateScanEngineStatus(id: string, status: EngineJobStatus
 
 export async function incrementScanEngineProgress(id: string) {
   const sb = getSupabase();
-  // Fetch current value, increment, and update
-  const { data: row } = await sb
-    .from('scan_engines')
-    .select('queries_done')
-    .eq('id', id)
-    .maybeSingle();
-
-  const newCount = (row?.queries_done ?? 0) + 1;
-  await sb.from('scan_engines').update({ queries_done: newCount }).eq('id', id);
+  const { data } = await sb.rpc('increment_engine_progress', { p_engine_id: id });
+  return data ?? 0;
 }
 
 export async function saveScanEngineSynthesis(id: string, synthesis: EngineSynthesis) {

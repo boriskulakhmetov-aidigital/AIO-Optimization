@@ -1,19 +1,22 @@
 import { useState, useEffect } from 'react';
 import { createClient } from '@supabase/supabase-js';
-import { BrandMark } from '@boriskulakhmetov-aidigital/design-system';
+import { BrandMark, ThemeToggle, useTheme } from '@boriskulakhmetov-aidigital/design-system';
+import { AIOReport } from '../components/report/AIOReport';
+import type { AIOReportData } from '../lib/types';
 
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL as string;
 const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string;
 
 export function PublicReportPage() {
   const token = window.location.pathname.replace(/^\/r\//, '').split('/')[0];
-  const [state, setState] = useState<'loading' | 'ready' | 'error'>('loading');
-  const [report, setReport] = useState<Record<string, unknown> | null>(null);
-  const [errorMsg, setErrorMsg] = useState('');
+  const [reportData, setReportData] = useState<AIOReportData | null>(null);
+  const [conceptName, setConceptName] = useState('');
+  const [error, setError] = useState<string | null>(null);
+  const { theme, toggle: toggleTheme } = useTheme();
 
   useEffect(() => {
-    if (!token) { setState('error'); setErrorMsg('Invalid report link.'); return; }
-    if (!supabaseUrl || !supabaseAnonKey) { setState('error'); setErrorMsg('Supabase not configured.'); return; }
+    if (!token) { setError('Invalid report link.'); return; }
+    if (!supabaseUrl || !supabaseAnonKey) { setError('Supabase not configured.'); return; }
 
     const sb = createClient(supabaseUrl, supabaseAnonKey);
     (sb as any)
@@ -22,63 +25,58 @@ export function PublicReportPage() {
       .eq('share_token', token)
       .eq('is_public', true)
       .single()
-      .then(({ data, error }: any) => {
-        if (error || !data) {
-          setErrorMsg('Report not found or is private.');
-          setState('error');
+      .then(({ data, error: sbErr }: any) => {
+        if (sbErr || !data) {
+          setError('Report not found or is private.');
           return;
         }
         if (!data.report_data) {
-          setErrorMsg('Report not ready yet.');
-          setState('error');
+          setError('Report not ready yet.');
           return;
         }
-        setReport(data.report_data);
-        setState('ready');
+        setReportData(data.report_data as AIOReportData);
+        setConceptName(data.concept_name ?? '');
       })
-      .catch((err: any) => {
-        setErrorMsg(String(err instanceof Error ? err.message : err));
-        setState('error');
-      });
+      .catch((err: any) => setError(String(err instanceof Error ? err.message : err)));
   }, [token]);
 
-  if (state === 'loading') {
-    return (
-      <div className="auth-gate">
-        <div className="auth-gate__brand">
-          <BrandMark size={28} />
-          Loading Report...
-        </div>
-      </div>
-    );
-  }
-
-  if (state === 'error') {
-    return (
-      <div className="status-page">
-        <h2>Report Unavailable</h2>
-        <p>{errorMsg || 'This report is private or no longer available.'}</p>
-      </div>
-    );
-  }
-
-  const summary = (report as { executive_summary?: string } | null)?.executive_summary;
-
   return (
-    <div style={{ padding: '48px 24px', maxWidth: 800, margin: '0 auto' }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 32 }}>
-        <BrandMark size={24} />
-        <h1 style={{ fontSize: '1.2rem', fontWeight: 700 }}>AI Search Optimization Report</h1>
+    <div className="app-layout app-layout--public">
+      <div className="app-content">
+        <header className="app-header">
+          <div className="app-header__left">
+            <div className="app-header__logo">
+              <BrandMark size={20} />
+              AI Labs
+            </div>
+            <span className="app-header__title">AIO Optimization — Shared Report</span>
+          </div>
+          <div className="app-header__right">
+            <ThemeToggle theme={theme} onToggle={toggleTheme} />
+          </div>
+        </header>
+        <main className="app-main">
+          {error && (
+            <div className="error-page">
+              <p className="error-page__msg">{error}</p>
+              <a href="/" className="btn-primary">Go to AIO Optimization</a>
+            </div>
+          )}
+          {!error && !reportData && (
+            <div className="generating-state">
+              <div className="generating-state__spinner" />
+              <h2 className="generating-state__title">Loading Report...</h2>
+            </div>
+          )}
+          {reportData && (
+            <AIOReport
+              data={reportData}
+              conceptName={conceptName}
+              onNewScan={() => { window.location.href = '/'; }}
+            />
+          )}
+        </main>
       </div>
-      {summary && (
-        <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', padding: '20px 24px', marginBottom: 24 }}>
-          <h3 style={{ fontSize: '0.85rem', color: 'var(--text-muted)', marginBottom: 10 }}>Executive Summary</h3>
-          <p style={{ lineHeight: 1.7 }}>{summary}</p>
-        </div>
-      )}
-      <pre style={{ fontSize: '0.75rem', background: 'var(--surface-2)', padding: 16, borderRadius: 8, overflow: 'auto', maxHeight: 600 }}>
-        {JSON.stringify(report, null, 2)}
-      </pre>
     </div>
   );
 }

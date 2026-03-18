@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, createContext, useContext, useRef } from 'react';
-import { AppShell, BrandMark, ChatPanel, ThemeToggle, useTheme } from '@boriskulakhmetov-aidigital/design-system';
+import { AppShell, ChatPanel } from '@boriskulakhmetov-aidigital/design-system';
 import type { AppShellContext, SupabaseClient } from '@boriskulakhmetov-aidigital/design-system';
 import { createClient } from '@supabase/supabase-js';
 import { SignIn, UserButton, useAuth } from '@clerk/react';
@@ -34,13 +34,6 @@ const ScanBridgeCtx = createContext<ScanBridge | null>(null);
 
 // ── Root component ──────────────────────────────────────────────────────────
 export default function App() {
-  // Check for public shared report route: #/share/TOKEN
-  const hash = window.location.hash;
-  const shareMatch = hash.match(/^#\/share\/(.+)$/);
-  if (shareMatch) {
-    return <PublicReport token={shareMatch[1]} />;
-  }
-
   return <ScanBridgeProvider />;
 }
 
@@ -392,78 +385,3 @@ function ConnectedSidebar() {
   );
 }
 
-// ── Public Shared Report (no auth required) ──────────────────────────────────
-
-function PublicReport({ token }: { token: string }) {
-  const [reportData, setReportData] = useState<AIOReportData | null>(null);
-  const [conceptName, setConceptName] = useState('');
-  const [error, setError] = useState<string | null>(null);
-  const { theme, toggle: toggleTheme } = useTheme();
-
-  useEffect(() => {
-    if (!supabaseConfig) {
-      setError('Supabase not configured');
-      return;
-    }
-    const publicSb = createClient(supabaseConfig.url, supabaseConfig.anonKey);
-    (publicSb as any)
-      .from('scans')
-      .select('report_data, concept_name, concept_type, is_public')
-      .eq('share_token', token)
-      .eq('is_public', true)
-      .single()
-      .then(({ data, error: sbErr }: any) => {
-        if (sbErr || !data) {
-          setError('Report not found or is private');
-          return;
-        }
-        if (!data.report_data) {
-          setError('Report not ready yet');
-          return;
-        }
-        setReportData(data.report_data as AIOReportData);
-        setConceptName(data.concept_name ?? '');
-      })
-      .catch((err: any) => setError(String(err)));
-  }, [token]);
-
-  return (
-    <div className="app-layout app-layout--public">
-      <div className="app-content">
-        <header className="app-header">
-          <div className="app-header__left">
-            <div className="app-header__logo">
-              <BrandMark size={20} />
-              AI Labs
-            </div>
-            <span className="app-header__title">AIO Optimization — Shared Report</span>
-          </div>
-          <div className="app-header__right">
-            <ThemeToggle theme={theme} onToggle={toggleTheme} />
-          </div>
-        </header>
-        <main className="app-main">
-          {error && (
-            <div className="error-page">
-              <p className="error-page__msg">{error}</p>
-              <a href="/" className="btn-primary">Go to AIO Optimization</a>
-            </div>
-          )}
-          {!error && !reportData && (
-            <div className="generating-state">
-              <div className="generating-state__spinner" />
-              <h2 className="generating-state__title">Loading Report...</h2>
-            </div>
-          )}
-          {reportData && (
-            <AIOReport
-              data={reportData}
-              conceptName={conceptName}
-              onNewScan={() => { window.location.hash = ''; window.location.reload(); }}
-            />
-          )}
-        </main>
-      </div>
-    </div>
-  );
-}
