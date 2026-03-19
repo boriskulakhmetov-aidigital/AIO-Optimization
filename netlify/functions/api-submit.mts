@@ -96,43 +96,39 @@ export default async (req: Request) => {
     updated_at: new Date().toISOString(),
   });
 
-  // First generate queries, then dispatch scan
-  // Fire-and-forget: generate queries → dispatch scan
-  const baseUrl = new URL(req.url).origin;
+  // Generate queries then dispatch scan (awaited so the request actually completes)
+  const siteUrl = process.env.URL || new URL(req.url).origin;
   const apiKey = req.headers.get('X-API-Key') || '';
 
-  (async () => {
-    try {
-      // Step 1: Generate queries
-      const queryResp = await fetch(`${baseUrl}/.netlify/functions/generate-queries`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'X-API-Key': apiKey,
-        },
-        body: JSON.stringify({
-          concept_type,
-          concept_name,
-          concept_category,
-          concept_context: concept_context || '',
-          engines: selectedEngines,
-          query_count: clampedQueryCount,
-        }),
-      });
+  try {
+    // Step 1: Generate queries
+    const queryResp = await fetch(`${siteUrl}/.netlify/functions/generate-queries`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-API-Key': apiKey,
+      },
+      body: JSON.stringify({
+        concept_type,
+        concept_name,
+        concept_category,
+        concept_context: concept_context || '',
+        engines: selectedEngines,
+        query_count: clampedQueryCount,
+      }),
+    });
 
-      if (!queryResp.ok) {
-        await supabase.from('job_status').update({
-          status: 'error',
-          error: 'Failed to generate queries',
-          updated_at: new Date().toISOString(),
-        }).eq('id', jobId);
-        return;
-      }
-
+    if (!queryResp.ok) {
+      await supabase.from('job_status').update({
+        status: 'error',
+        error: 'Failed to generate queries',
+        updated_at: new Date().toISOString(),
+      }).eq('id', jobId);
+    } else {
       const { queries } = await queryResp.json();
 
       // Step 2: Dispatch scan
-      await fetch(`${baseUrl}/.netlify/functions/dispatch-scan`, {
+      await fetch(`${siteUrl}/.netlify/functions/dispatch-scan`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -145,14 +141,14 @@ export default async (req: Request) => {
           messages: [],
         }),
       });
-    } catch (err) {
-      await supabase.from('job_status').update({
-        status: 'error',
-        error: `Pipeline error: ${err instanceof Error ? err.message : String(err)}`,
-        updated_at: new Date().toISOString(),
-      }).eq('id', jobId);
     }
-  })();
+  } catch (err) {
+    await supabase.from('job_status').update({
+      status: 'error',
+      error: `Pipeline error: ${err instanceof Error ? err.message : String(err)}`,
+      updated_at: new Date().toISOString(),
+    }).eq('id', jobId);
+  }
 
   // Log the API request
   await logApiRequest(supabase as any, {
