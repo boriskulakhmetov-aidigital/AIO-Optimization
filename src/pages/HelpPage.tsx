@@ -16,15 +16,17 @@ AIO (AI Optimization) audits how AI search engines perceive your brand. It queri
 
 Open the app and sign in with your AIDigital Labs account.
 
-![AIO Optimization — Main View](/guide/aio-optimization-landing.png)
+![Landing page after sign-in](/guide/aio-optimization-01-landing.png)
 
-### 2. Enter Your Brand and Domain
+### 2. Enter Your Brand Details
 
-Tell the AI what brand or product you want to scan:
+Tell the AI what brand or product you want to scan. Provide:
 
-- "Scan how AI engines see Acme Corp at acme.com"
-- "Check what ChatGPT and Gemini say about our SaaS product"
-- "Audit AI visibility for our brand in the project management space"
+- **Brand or product name**
+- **Concept type** (e.g., company, product, service)
+- **Category** (e.g., "project management software", "organic skincare")
+
+For example: "Scan Acme Corp, a B2B SaaS company in the project management space."
 
 ### 3. Select AI Engines
 
@@ -38,7 +40,7 @@ Choose which AI search engines to include in the scan:
 
 > **Tip:** Select all engines for a comprehensive view. Each AI has different training data and will surface different information about your brand.
 
-![Chat Panel](/guide/aio-optimization-chat.png)
+![AI response with engine selection](/guide/aio-optimization-02-ai-response.png)
 
 ### 4. Set the Number of Queries
 
@@ -48,9 +50,17 @@ Choose how many queries to run. More queries give a broader picture but take lon
 - **Standard scan** — 15–25 queries (5–8 minutes)
 - **Deep scan** — 30+ queries (10–15 minutes)
 
+![Conversation with scan configuration](/guide/aio-optimization-02-conversation.png)
+
 ### 5. Wait for the Multi-Engine Scan
 
-The AI runs your queries across all selected engines simultaneously. A progress indicator shows you which engines have completed.
+The AI runs your queries across all selected engines in parallel. A progress indicator shows which engines have completed.
+
+This is the longest-running tool in the suite — a comprehensive multi-engine scan takes **10-15 minutes**. The parallel execution means you're getting results from multiple AI engines simultaneously.
+
+![Scan dispatched and in progress](/guide/aio-optimization-03-dispatched.png)
+
+![Engines scanning in parallel](/guide/aio-optimization-04-scanning.png)
 
 ### 6. Review the Synthesis Report
 
@@ -64,7 +74,7 @@ The report includes:
 
 ### 7. Download or Share
 
-Export the report as PDF or share it via link.
+Export the report as Markdown, PDF, or share it via link.
 
 ---
 
@@ -72,10 +82,12 @@ Export the report as PDF or share it via link.
 
 | Step | Time |
 |------|------|
-| Enter brand info and select engines | 1–2 minutes |
-| Configure scan parameters | 1 minute |
-| Multi-engine scan | 2–15 minutes (varies by scope) |
-| **Total** | **4–18 minutes** |
+| Enter brand name, concept type, and category | 1 minute |
+| Select engines and set query count | 1 minute |
+| Multi-engine parallel scan | 10–15 minutes |
+| **Total** | **12–17 minutes** |
+
+> AIO scans take the longest of any tool because they query multiple external AI engines. The wait is worth it — you get a comprehensive view of your AI search presence across all major platforms.
 
 ---
 
