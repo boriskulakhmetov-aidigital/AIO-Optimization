@@ -1,5 +1,5 @@
 import { GoogleGenAI } from '@google/genai';
-import { requireAuth } from './_shared/auth.js';
+import { requireAuthOrEmbed } from './_shared/auth.js';
 import { buildQueryGeneratorPrompt } from './_shared/queryGeneratorPrompt.js';
 import type { ConceptType, GeneratedQuery, EngineId } from './_shared/types.js';
 
@@ -16,7 +16,7 @@ export default async (req: Request) => {
   }
 
   try {
-    await requireAuth(req);
+    await requireAuthOrEmbed(req);
 
     const body = await req.json();
     const {

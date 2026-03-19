@@ -1,4 +1,4 @@
-import { requireAuth } from './_shared/auth.js';
+import { requireAuthOrEmbed } from './_shared/auth.js';
 import { getUserStatus } from './_shared/supabase.js';
 import { ENGINE_REGISTRY } from './_shared/engineRegistry.js';
 
@@ -15,7 +15,7 @@ export default async (req: Request) => {
 
   let userId: string;
   try {
-    const auth = await requireAuth(req);
+    const auth = await requireAuthOrEmbed(req);
     userId = auth.userId;
   } catch {
     return Response.json({ error: 'Unauthorized' }, { status: 401 });

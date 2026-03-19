@@ -1,4 +1,4 @@
-import { requireAuth } from './_shared/auth.js';
+import { requireAuthOrEmbed } from './_shared/auth.js';
 import { getScanEngines, readJobStatus } from './_shared/supabase.js';
 
 /**
@@ -13,7 +13,7 @@ export default async (req: Request) => {
   if (!scanId) return Response.json({ error: 'Missing id' }, { status: 400 });
 
   try {
-    await requireAuth(req);
+    await requireAuthOrEmbed(req);
 
     // Try job_status first (fast path)
     const jobRow = await readJobStatus(scanId);

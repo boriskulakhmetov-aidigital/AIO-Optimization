@@ -1,4 +1,4 @@
-import { requireAuth } from './_shared/auth.js';
+import { requireAuthOrEmbed } from './_shared/auth.js';
 import {
   createScan, updateScanStatus, createScanEngine,
   bulkInsertQueries, incrementUserScanCount, writeJobStatus,
@@ -26,7 +26,7 @@ export default async (req: Request) => {
   }
 
   try {
-    const { userId, email } = await requireAuth(req);
+    const { userId, email } = await requireAuthOrEmbed(req);
     const body = await req.json();
 
     const {
