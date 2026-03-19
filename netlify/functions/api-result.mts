@@ -41,10 +41,10 @@ export default async (req: Request) => {
     return Response.json({ error: 'job_id is required' }, { status: 400 });
   }
 
-  // Check job status first
+  // Check job status first (also grab report from job_status as fallback)
   const { data: job } = await supabase
     .from('job_status')
-    .select('id, status, meta')
+    .select('id, status, meta, report')
     .eq('id', jobId)
     .eq('app', APP_NAME)
     .maybeSingle();
@@ -71,6 +71,17 @@ export default async (req: Request) => {
 
   if (!scan) {
     return Response.json({ error: 'Scan not found' }, { status: 404 });
+  }
+
+  // Use job_status.report as fallback if scan doesn't have it
+  const markdownReport = scan.report || (job as any).report || '';
+  const visualReport = scan.report_data || null;
+
+  // If scan is missing the report, copy it over so the public share link works
+  if (!scan.report && markdownReport) {
+    await supabase.from('scans')
+      .update({ report: markdownReport, status: 'complete', updated_at: new Date().toISOString() })
+      .eq('id', scanId);
   }
 
   // Auto-generate share link for API consumers
@@ -111,7 +122,7 @@ export default async (req: Request) => {
   if (format === 'markdown') {
     return Response.json({
       job_id: jobId,
-      markdown_report: scan.report,
+      markdown_report: markdownReport,
       report_url: reportUrl,
     });
   }
@@ -119,7 +130,7 @@ export default async (req: Request) => {
   if (format === 'visual') {
     return Response.json({
       job_id: jobId,
-      visual_report: scan.report_data,
+      visual_report: visualReport,
       report_url: reportUrl,
     });
   }
@@ -132,9 +143,9 @@ export default async (req: Request) => {
     concept_type: scan.concept_type,
     concept_category: scan.concept_category,
     intake_summary: scan.intake_summary,
-    has_visual_report: !!scan.report_data,
-    markdown_report: scan.report,
-    visual_report: scan.report_data || null,
+    has_visual_report: !!visualReport,
+    markdown_report: markdownReport,
+    visual_report: visualReport || null,
     completed_at: scan.completed_at,
     report_url: reportUrl,
   });

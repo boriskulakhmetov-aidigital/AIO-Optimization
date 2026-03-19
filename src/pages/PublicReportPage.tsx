@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { createClient } from '@supabase/supabase-js';
-import { BrandMark, ThemeToggle, useTheme } from '@boriskulakhmetov-aidigital/design-system';
+import { BrandMark, ThemeToggle, useTheme, ReportViewer } from '@boriskulakhmetov-aidigital/design-system';
 import { AIOReport } from '../components/report/AIOReport';
 import type { AIOReportData } from '../lib/types';
 
@@ -10,6 +10,7 @@ const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string;
 export function PublicReportPage() {
   const token = window.location.pathname.replace(/^\/r\//, '').split('/')[0];
   const [reportData, setReportData] = useState<AIOReportData | null>(null);
+  const [markdownReport, setMarkdownReport] = useState<string | null>(null);
   const [conceptName, setConceptName] = useState('');
   const [error, setError] = useState<string | null>(null);
   const { theme, toggle: toggleTheme } = useTheme();
@@ -21,7 +22,7 @@ export function PublicReportPage() {
     const sb = createClient(supabaseUrl, supabaseAnonKey);
     (sb as any)
       .from('scans')
-      .select('report_data, concept_name, concept_type, is_public')
+      .select('report_data, report, concept_name, concept_type, is_public')
       .eq('share_token', token)
       .eq('is_public', true)
       .single()
@@ -30,11 +31,16 @@ export function PublicReportPage() {
           setError('Report not found or is private.');
           return;
         }
-        if (!data.report_data) {
+        if (!data.report_data && !data.report) {
           setError('Report not ready yet.');
           return;
         }
-        setReportData(data.report_data as AIOReportData);
+        if (data.report_data) {
+          setReportData(data.report_data as AIOReportData);
+        }
+        if (data.report) {
+          setMarkdownReport(data.report as string);
+        }
         setConceptName(data.concept_name ?? '');
       })
       .catch((err: any) => setError(String(err instanceof Error ? err.message : err)));
@@ -62,7 +68,7 @@ export function PublicReportPage() {
               <a href="/" className="btn-primary">Go to AIO Optimization</a>
             </div>
           )}
-          {!error && !reportData && (
+          {!error && !reportData && !markdownReport && (
             <div className="generating-state">
               <div className="generating-state__spinner" />
               <h2 className="generating-state__title">Loading Report...</h2>
@@ -74,6 +80,11 @@ export function PublicReportPage() {
               conceptName={conceptName}
               onNewScan={() => { window.location.href = '/'; }}
             />
+          )}
+          {!reportData && markdownReport && (
+            <div style={{ maxWidth: 900, margin: '0 auto', padding: '40px 24px' }}>
+              <ReportViewer reportText={markdownReport} />
+            </div>
           )}
         </main>
       </div>
