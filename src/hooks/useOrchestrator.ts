@@ -1,4 +1,5 @@
 import { useState, useRef, useCallback } from 'react';
+import { useAuth } from '@clerk/react';
 import type { ChatMessage } from '../lib/types';
 import { parseSSEStream } from '../lib/sseParser';
 
@@ -20,6 +21,7 @@ interface OrchestratorState {
 export function useOrchestrator(
   onScanDispatch: (config: ScanDispatchConfig, sessionId: string, messages: ChatMessage[]) => void,
 ) {
+  const { getToken } = useAuth();
   const [state, setState] = useState<OrchestratorState>({
     messages: [],
     streaming: false,
@@ -60,9 +62,13 @@ export function useOrchestrator(
     setState(s => ({ ...s, streaming: true, error: null }));
 
     try {
+      const token = await getToken();
       const res = await fetch('/.netlify/functions/orchestrator', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
         body: JSON.stringify({
           messages: messagesRef.current.map(m => ({ role: m.role, content: m.content })),
         }),
