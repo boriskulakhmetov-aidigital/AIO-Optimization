@@ -11,7 +11,9 @@ import { validateApiKey, logApiRequest, apiKeyErrorResponse } from '@boriskulakh
 
 const APP_NAME = 'aio-optimization';
 
-const DEFAULT_ENGINES = ['chatgpt_free', 'gemini_free', 'claude_free', 'perplexity', 'copilot'];
+// Only include engines that have API keys configured
+// Others will be added as keys become available
+const DEFAULT_ENGINES = ['gemini_free', 'google_sge'];
 
 function getSupabase() {
   const url = process.env.SUPABASE_URL!;
@@ -63,7 +65,10 @@ export default async (req: Request) => {
   if (!concept_name) {
     return Response.json({ error: 'concept_name is required' }, { status: 400 });
   }
-  if (!concept_type || !['product', 'offering', 'concept'].includes(concept_type)) {
+  // Accept common aliases and map to valid types
+  const TYPE_MAP: Record<string, string> = { brand: 'product', service: 'offering', category: 'concept' };
+  const normalizedType = TYPE_MAP[concept_type as string] || concept_type;
+  if (!normalizedType || !['product', 'offering', 'concept'].includes(normalizedType)) {
     return Response.json({ error: 'concept_type is required (product | offering | concept)' }, { status: 400 });
   }
   if (!concept_category) {
@@ -77,7 +82,7 @@ export default async (req: Request) => {
   const clampedQueryCount = Math.max(20, Math.min(80, query_count || 50));
 
   const scanConfig = {
-    concept_type,
+    concept_type: normalizedType,
     concept_name,
     concept_category,
     ...(concept_context && { concept_context }),
@@ -109,7 +114,7 @@ export default async (req: Request) => {
         'X-API-Key': apiKey,
       },
       body: JSON.stringify({
-        concept_type,
+        concept_type: normalizedType,
         concept_name,
         concept_category,
         concept_context: concept_context || '',
