@@ -1,13 +1,11 @@
 import { useState, useEffect, useCallback, createContext, useContext, useRef } from 'react';
-import { AppShell, ChatPanel } from '@boriskulakhmetov-aidigital/design-system';
+import { AppShell, ChatPanel, useScanProgress, useJobStatus } from '@boriskulakhmetov-aidigital/design-system';
 import type { AppShellContext, SupabaseClient } from '@boriskulakhmetov-aidigital/design-system';
 import { createClient } from '@supabase/supabase-js';
 import { SignIn, UserButton, useAuth } from '@clerk/react';
 import type { AppPhase } from './lib/types';
 import { useOrchestrator } from './hooks/useOrchestrator';
 import type { ScanDispatchConfig } from './hooks/useOrchestrator';
-import { useScanPoller } from './hooks/useScanPoller';
-import { useSynthesisPoller } from './hooks/useSynthesisPoller';
 import { EngineSelector } from './components/EngineSelector';
 import { ScanDashboard } from './components/ScanDashboard';
 import { ScanSidebar } from './components/ScanSidebar';
@@ -148,31 +146,34 @@ function ScanBridgeProvider() {
   const { messages, streaming, error: chatError, sendMessage, reset: resetOrchestrator } =
     useOrchestrator(handleScanDispatch);
 
-  // ── Polling ──
-  const { progress: scanProgress } = useScanPoller(
-    phase === 'scanning' ? scanId : null,
-    authFetch,
-  );
-  const { status: synthesisStatus } = useSynthesisPoller(
-    phase === 'synthesizing' || phase === 'reviewing' ? scanId : null,
-    authFetch,
+  // ── Realtime subscriptions (replace polling) ──
+
+  // Engine-level progress (queries_done/total per engine)
+  const engineProgress = useScanProgress(
+    supabase,
+    phase === 'scanning' || phase === 'synthesizing' ? scanId : null,
   );
 
-  // Transition: scanning → synthesizing
+  // Overall job status (phase transitions via meta.phase)
+  const jobStatus = useJobStatus(
+    supabase,
+    phase === 'scanning' || phase === 'synthesizing' || phase === 'reviewing' ? scanId : null,
+  );
+
+  // Phase transitions via jobStatus
+  const jobMeta = (jobStatus as any)?.meta as { phase?: string } | undefined;
   useEffect(() => {
-    if (scanProgress?.status === 'synthesizing' && phase === 'scanning') {
-      setPhase('synthesizing');
-    } else if (scanProgress?.status === 'error' && phase === 'scanning') {
+    if (!jobStatus) return;
+    const phase_ = jobMeta?.phase;
+
+    if (jobStatus.status === 'error') {
       setPhase('error');
+      setErrorDetail(jobStatus.error || 'Unknown error');
+      return;
     }
-  }, [scanProgress?.status, phase]);
 
-  // Transition: synthesizing → reviewing → complete
-  useEffect(() => {
-    if (!synthesisStatus) return;
-    if (synthesisStatus.phase === 'reviewing' && phase === 'synthesizing') {
-      setPhase('reviewing');
-    } else if (synthesisStatus.phase === 'complete' && (phase === 'synthesizing' || phase === 'reviewing')) {
+    if (jobStatus.status === 'complete' && (phase === 'synthesizing' || phase === 'reviewing')) {
+      // Report is ready — fetch it
       if (scanId && supabaseRef.current) {
         supabaseRef.current
           .from('scans')
@@ -186,10 +187,15 @@ function ScanBridgeProvider() {
       }
       setPhase('report_ready');
       setSidebarRefreshKey(k => k + 1);
-    } else if (synthesisStatus.phase === 'error') {
-      setPhase('error');
+      return;
     }
-  }, [synthesisStatus?.phase, phase]);
+
+    if (phase_ === 'synthesizing' && phase === 'scanning') {
+      setPhase('synthesizing');
+    } else if (phase_ === 'reviewing' && phase === 'synthesizing') {
+      setPhase('reviewing');
+    }
+  }, [jobStatus?.status, jobMeta?.phase, phase]);
 
   const dashPhase = phase === 'scanning' ? 'scanning'
     : phase === 'synthesizing' ? 'synthesizing'
@@ -197,6 +203,33 @@ function ScanBridgeProvider() {
     : phase === 'report_ready' ? 'complete'
     : phase === 'error' ? 'error'
     : 'scanning';
+
+  // Build scanProgress-compatible object from Realtime engine data
+  const scanProgress = scanId ? {
+    scan_id: scanId,
+    status: phase === 'scanning' ? 'scanning' as const : 'synthesizing' as const,
+    engines: Object.values(engineProgress).map((e: any) => ({
+      engine_id: e.engine_id,
+      status: e.status,
+      queries_total: e.queries_total,
+      queries_done: e.queries_done,
+    })),
+    feed: [] as any[], // Feed snippets not available via Realtime (non-critical)
+  } : null;
+
+  // Build synthesisStatus-compatible object
+  const synthesisStatus = scanId ? {
+    scan_id: scanId,
+    scan_status: phase,
+    phase: phase as any,
+    engines: Object.values(engineProgress).map((e: any) => ({
+      engine_id: e.engine_id,
+      status: e.status,
+      has_synthesis: !!e.synthesis_data,
+    })),
+    review_status: phase === 'reviewing' ? 'processing' : null,
+    has_report: phase === 'report_ready',
+  } : null;
 
   // ── Actions ──
   function handleNewScan() {

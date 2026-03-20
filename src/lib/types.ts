@@ -35,3 +35,48 @@ export type {
   IntentBreakdown,
   QueryLogEntry,
 } from '../../netlify/functions/_shared/types.js';
+
+// ── Scan progress types (used by ScanDashboard) ──────────────────────────────
+
+import type { EngineId } from '../../netlify/functions/_shared/types.js';
+
+export interface EngineProgress {
+  engine_id: EngineId;
+  status: 'pending' | 'querying' | 'complete' | 'error';
+  queries_total: number;
+  queries_done: number;
+  latest_snippet?: {
+    engine_id: string;
+    query: string;
+    response: string;
+    ts: number;
+  } | null;
+}
+
+export interface FeedSnippet {
+  engine_id: string;
+  query: string;
+  response: string;
+  ts: number;
+}
+
+export interface ScanProgress {
+  scan_id: string;
+  status: 'scanning' | 'synthesizing' | 'error';
+  engines: EngineProgress[];
+  feed: FeedSnippet[];
+  skipped_engines?: string[];
+}
+
+export interface SynthesisStatus {
+  scan_id: string;
+  scan_status: string;
+  phase: 'scanning' | 'synthesizing' | 'reviewing' | 'complete' | 'error';
+  engines: Array<{
+    engine_id: string;
+    status: string;
+    has_synthesis: boolean;
+  }>;
+  review_status: string | null;
+  has_report: boolean;
+}

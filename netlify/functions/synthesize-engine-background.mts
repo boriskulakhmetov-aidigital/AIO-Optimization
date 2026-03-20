@@ -4,6 +4,7 @@ import {
   saveScanEngineSynthesis, updateScanEngineStatus,
   getScanEngines, areAllEnginesSynthesized,
   getScanById, updateScanStatus, createScanReview,
+  writeJobStatus,
 } from './_shared/supabase.js';
 import { getEngineName } from './_shared/engineRegistry.js';
 import { buildSynthesizerPrompt, formatQueriesForSynthesis } from './_shared/synthesizerPrompt.js';
@@ -54,6 +55,9 @@ export default async (req: Request) => {
 
     // Mark engine as synthesizing
     await updateScanEngineStatus(engineJobId, 'synthesizing');
+
+    // Write job status so frontend can track phase via Realtime
+    await writeJobStatus(scanId, { status: 'streaming', meta: { phase: 'synthesizing', engine_id: engineId } });
 
     // Load all queries for this engine
     const queries = await getQueriesForEngine(engineJobId);
@@ -169,6 +173,9 @@ async function checkAndTriggerReview(scanId: string, req: Request) {
 
   // Update scan status
   await updateScanStatus(scanId, 'reviewing');
+
+  // Write job status for Realtime phase tracking
+  await writeJobStatus(scanId, { status: 'streaming', meta: { phase: 'reviewing' } });
 
   // Create review record
   const reviewId = `${scanId}_review`;

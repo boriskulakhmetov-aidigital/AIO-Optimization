@@ -1,8 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { ENGINE_META, getEngineColor } from '../lib/engineMeta';
-import type { ScanProgress, EngineProgress, FeedSnippet } from '../hooks/useScanPoller';
-import type { SynthesisStatus } from '../hooks/useSynthesisPoller';
-import type { EngineId } from '../lib/types';
+import type { ScanProgress, EngineProgress, FeedSnippet, SynthesisStatus, EngineId } from '../lib/types';
 
 interface ScanDashboardProps {
   conceptName: string;

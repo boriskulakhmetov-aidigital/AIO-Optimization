@@ -2,7 +2,7 @@ import { GoogleGenAI } from '@google/genai';
 import {
   getScanById, getScanEngines, getScanReview,
   saveScanReview, saveScanReportData, updateScanStatus,
-  getQueriesForScan,
+  getQueriesForScan, writeJobStatus,
 } from './_shared/supabase.js';
 import { trackUsage } from './_shared/access.js';
 import { getEngineName } from './_shared/engineRegistry.js';
@@ -40,6 +40,9 @@ export default async (req: Request) => {
   log.info('review.start', { function_name: 'review-background', entity_type: 'scan', entity_id: scanId, correlation_id: scanId, ai_provider: 'gemini', ai_model: 'gemini-3.1-pro-preview' });
 
   try {
+    // Write job status so frontend can track review phase via Realtime
+    await writeJobStatus(scanId, { status: 'streaming', meta: { phase: 'reviewing' } });
+
     // Load scan and engine data
     const scan = await getScanById(scanId);
     if (!scan) throw new Error(`Scan not found: ${scanId}`);
@@ -155,6 +158,9 @@ export default async (req: Request) => {
     await saveScanReportData(scanId, reportData);
     // saveScanReportData already sets status to 'complete'
 
+    // Write job status for Realtime — signals frontend to fetch report
+    await writeJobStatus(scanId, { status: 'complete', completed_at: new Date().toISOString() });
+
     // ── Track usage for tier billing ──────────────────────────────────────
     if (scan.user_id) {
       await trackUsage(scan.user_id, 'aio-optimization').catch(err =>
@@ -169,6 +175,7 @@ export default async (req: Request) => {
     console.error(`review-background error (${scanId}):`, err);
     log.error('review.error', { function_name: 'review-background', entity_type: 'scan', entity_id: scanId, correlation_id: scanId, error: err, error_category: 'gemini_api', duration_ms: Date.now() - startTime });
     await updateScanStatus(scanId, 'error', `Review failed: ${err}`);
+    await writeJobStatus(scanId, { status: 'error', error: `Review failed: ${err}` });
   }
 
   return new Response('Accepted', { status: 202 });
