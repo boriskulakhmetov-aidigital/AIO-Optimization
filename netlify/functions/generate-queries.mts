@@ -55,7 +55,7 @@ export default async (req: Request) => {
 
     const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY! });
     const result = await ai.models.generateContent({
-      model: 'gemini-3-flash-preview',
+      model: 'gemini-3.0-flash',
       contents: [{ role: 'user', parts: [{ text: prompt }] }],
       config: {
         maxOutputTokens: 4096,
