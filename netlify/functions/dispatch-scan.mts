@@ -31,11 +31,15 @@ export default async (req: Request) => {
 
     const {
       scanId,
+      jobId,
       config,
-      queries,
+      queries: providedQueries,
+      generateQueries,
+      queryParams,
       messages = [],
     } = body as {
       scanId: string;
+      jobId?: string;
       config: {
         concept_type: ConceptType;
         concept_name: string;
@@ -44,9 +48,35 @@ export default async (req: Request) => {
         engines: EngineId[];
         query_count: number;
       };
-      queries: GeneratedQuery[];
+      queries?: GeneratedQuery[];
+      generateQueries?: boolean;
+      queryParams?: Record<string, unknown>;
       messages: Array<{ role: string; content: string }>;
     };
+
+    // Generate queries inline if requested (API-submit path)
+    let queries = providedQueries || [];
+    if (generateQueries && queryParams && !queries.length) {
+      const origin = new URL(req.url).origin;
+      const queryResp = await fetch(`${origin}/.netlify/functions/generate-queries`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-API-Key': req.headers.get('X-API-Key') || '',
+        },
+        body: JSON.stringify(queryParams),
+      });
+
+      if (!queryResp.ok) {
+        if (jobId) {
+          await writeJobStatus(jobId, { status: 'error', error: 'Failed to generate queries' });
+        }
+        return Response.json({ error: 'Failed to generate queries' }, { status: 500 });
+      }
+
+      const data = await queryResp.json();
+      queries = data.queries;
+    }
 
     if (!scanId || !config || !queries?.length) {
       return Response.json({ error: 'Missing scanId, config, or queries' }, { status: 400 });

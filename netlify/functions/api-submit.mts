@@ -96,59 +96,35 @@ export default async (req: Request) => {
     updated_at: new Date().toISOString(),
   });
 
-  // Generate queries then dispatch scan (awaited so the request actually completes)
+  // Dispatch the full pipeline (generate queries → scan engines) to a background function.
+  // The pipeline takes 10-60s for query generation alone, way beyond the 26s function timeout.
   const siteUrl = process.env.URL || new URL(req.url).origin;
   const apiKey = req.headers.get('X-API-Key') || '';
 
   try {
-    // Step 1: Generate queries
-    const queryResp = await fetch(`${siteUrl}/.netlify/functions/generate-queries`, {
+    await fetch(`${siteUrl}/.netlify/functions/dispatch-scan`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         'X-API-Key': apiKey,
       },
       body: JSON.stringify({
-        concept_type,
-        concept_name,
-        concept_category,
-        concept_context: concept_context || '',
-        engines: selectedEngines,
-        query_count: clampedQueryCount,
+        scanId,
+        jobId,
+        config: scanConfig,
+        generateQueries: true,
+        queryParams: {
+          concept_type,
+          concept_name,
+          concept_category,
+          concept_context: concept_context || '',
+          engines: selectedEngines,
+          query_count: clampedQueryCount,
+        },
+        messages: [],
       }),
     });
-
-    if (!queryResp.ok) {
-      await supabase.from('job_status').update({
-        status: 'error',
-        error: 'Failed to generate queries',
-        updated_at: new Date().toISOString(),
-      }).eq('id', jobId);
-    } else {
-      const { queries } = await queryResp.json();
-
-      // Step 2: Dispatch scan
-      await fetch(`${siteUrl}/.netlify/functions/dispatch-scan`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'X-API-Key': apiKey,
-        },
-        body: JSON.stringify({
-          scanId,
-          config: scanConfig,
-          queries,
-          messages: [],
-        }),
-      });
-    }
-  } catch (err) {
-    await supabase.from('job_status').update({
-      status: 'error',
-      error: `Pipeline error: ${err instanceof Error ? err.message : String(err)}`,
-      updated_at: new Date().toISOString(),
-    }).eq('id', jobId);
-  }
+  } catch { /* Non-fatal — background function handles its own errors */ }
 
   // Log the API request
   await logApiRequest(supabase as any, {
