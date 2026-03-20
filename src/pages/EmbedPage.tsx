@@ -2,14 +2,13 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 import {
   EmbedLayout, ChatPanel,
   applyTheme, resolveTheme, aiLabsTheme,
+  useScanProgress, useJobStatus, ConnectedShareBar,
 } from '@boriskulakhmetov-aidigital/design-system'
 import type { SupabaseClient } from '@boriskulakhmetov-aidigital/design-system'
 import '@boriskulakhmetov-aidigital/design-system/style.css'
 import { createClient } from '@supabase/supabase-js'
 import { parseSSEStream } from '../lib/sseParser'
-import type { AppPhase, AIOReportData, EngineId } from '../lib/types'
-import { useScanPoller } from '../hooks/useScanPoller'
-import { useSynthesisPoller } from '../hooks/useSynthesisPoller'
+import type { AppPhase, AIOReportData } from '../lib/types'
 import { ScanDashboard } from '../components/ScanDashboard'
 import { AIOReport } from '../components/report/AIOReport'
 
@@ -56,14 +55,14 @@ export default function EmbedPage({ token, theme }: Props) {
     return fetch(url, { ...options, headers })
   }, [token])
 
-  // Polling
-  const { progress: scanProgress } = useScanPoller(
-    phase === 'scanning' ? scanId : null,
-    embedFetch,
+  // Realtime subscriptions (replace polling)
+  const engineProgress = useScanProgress(
+    supabaseRef.current,
+    phase === 'scanning' || phase === 'synthesizing' ? scanId : null,
   )
-  const { status: synthesisStatus } = useSynthesisPoller(
-    phase === 'synthesizing' || phase === 'reviewing' ? scanId : null,
-    embedFetch,
+  const jobStatus = useJobStatus(
+    supabaseRef.current,
+    phase === 'scanning' || phase === 'synthesizing' || phase === 'reviewing' ? scanId : null,
   )
 
   useEffect(() => {
@@ -205,20 +204,19 @@ export default function EmbedPage({ token, theme }: Props) {
     }
   }, [streaming, token, handleScanDispatch])
 
-  // Phase transitions
+  // Phase transitions via jobStatus (Realtime)
+  const jobMeta = (jobStatus as any)?.meta as { phase?: string } | undefined
   useEffect(() => {
-    if (scanProgress?.status === 'synthesizing' && phase === 'scanning') {
-      setPhase('synthesizing')
-    } else if (scanProgress?.status === 'error' && phase === 'scanning') {
-      setPhase('error')
-    }
-  }, [scanProgress?.status, phase])
+    if (!jobStatus) return
+    const metaPhase = jobMeta?.phase
 
-  useEffect(() => {
-    if (!synthesisStatus) return
-    if (synthesisStatus.phase === 'reviewing' && phase === 'synthesizing') {
-      setPhase('reviewing')
-    } else if (synthesisStatus.phase === 'complete' && (phase === 'synthesizing' || phase === 'reviewing')) {
+    if (jobStatus.status === 'error') {
+      setPhase('error')
+      setErrorDetail(jobStatus.error || 'Unknown error')
+      return
+    }
+
+    if (jobStatus.status === 'complete' && (phase === 'synthesizing' || phase === 'reviewing')) {
       if (scanId && supabaseRef.current) {
         (supabaseRef.current as any)
           .from('scans')
@@ -231,10 +229,39 @@ export default function EmbedPage({ token, theme }: Props) {
           .catch(console.warn)
       }
       setPhase('report_ready')
-    } else if (synthesisStatus.phase === 'error') {
-      setPhase('error')
+      return
     }
-  }, [synthesisStatus?.phase, phase])
+
+    if (metaPhase === 'synthesizing' && phase === 'scanning') setPhase('synthesizing')
+    if (metaPhase === 'reviewing' && phase === 'synthesizing') setPhase('reviewing')
+  }, [jobStatus?.status, jobMeta?.phase, phase])
+
+  // Build ScanDashboard-compatible props from Realtime data
+  const scanProgress = scanId ? {
+    scan_id: scanId,
+    status: phase === 'scanning' ? 'scanning' as const : 'synthesizing' as const,
+    engines: Object.values(engineProgress).map((e: any) => ({
+      engine_id: e.engine_id,
+      status: e.status,
+      queries_total: e.queries_total,
+      queries_done: e.queries_done,
+    })),
+    feed: [] as any[],
+  } : null
+
+  // Build synthesisStatus-compatible object
+  const synthesisStatus = scanId ? {
+    scan_id: scanId,
+    scan_status: phase,
+    phase: phase as any,
+    engines: Object.values(engineProgress).map((e: any) => ({
+      engine_id: e.engine_id,
+      status: e.status,
+      has_synthesis: !!e.synthesis_data,
+    })),
+    review_status: phase === 'reviewing' ? 'processing' : null,
+    has_report: phase === 'report_ready',
+  } : null
 
   const dashPhase = phase === 'scanning' ? 'scanning'
     : phase === 'synthesizing' ? 'synthesizing'
@@ -292,13 +319,16 @@ export default function EmbedPage({ token, theme }: Props) {
       )}
 
       {phase === 'report_ready' && reportData && (
-        <AIOReport
-          data={reportData}
-          conceptName={conceptName}
-          onNewScan={handleNewScan}
-          scanId={scanId}
-          supabase={supabaseRef.current}
-        />
+        <>
+          <ConnectedShareBar jobId={scanId} supabase={supabaseRef.current} tableName="scans" />
+          <AIOReport
+            data={reportData}
+            conceptName={conceptName}
+            onNewScan={handleNewScan}
+            scanId={scanId}
+            supabase={supabaseRef.current}
+          />
+        </>
       )}
 
       {phase === 'report_ready' && !reportData && (
