@@ -65,7 +65,7 @@ export default async (req: Request) => {
 
   const { data: scan } = await supabase
     .from('scans')
-    .select('id, concept_name, concept_type, concept_category, report, report_data, intake_summary, completed_at, share_token, is_public')
+    .select('id, concept_name, concept_type, concept_category, report_data, intake_summary, completed_at, share_token, is_public')
     .eq('id', scanId)
     .maybeSingle();
 
@@ -73,16 +73,19 @@ export default async (req: Request) => {
     return Response.json({ error: 'Scan not found' }, { status: 404 });
   }
 
-  // Use job_status.report as fallback if scan doesn't have it
-  const markdownReport = scan.report || (job as any).report || '';
-  const visualReport = scan.report_data || null;
+  // AIO stores report in scan_review table, not in scans.report
+  const { data: review } = await supabase
+    .from('scan_review')
+    .select('review_data')
+    .eq('scan_id', scanId)
+    .maybeSingle();
 
-  // If scan is missing the report, copy it over so the public share link works
-  if (!scan.report && markdownReport) {
-    await supabase.from('scans')
-      .update({ report: markdownReport, status: 'complete', updated_at: new Date().toISOString() })
-      .eq('id', scanId);
-  }
+  // Build markdown from review_data
+  const reviewData = review?.review_data as Record<string, unknown> | null;
+  const markdownReport = reviewData
+    ? `# AIO Optimization Report: ${scan.concept_name}\n\n${reviewData.executive_summary || ''}\n\n${reviewData.biggest_gap || ''}`
+    : '';
+  const visualReport = scan.report_data || reviewData || null;
 
   // Auto-generate share link for API consumers
   let shareToken = scan.share_token;
