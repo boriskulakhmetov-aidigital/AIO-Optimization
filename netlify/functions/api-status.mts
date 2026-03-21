@@ -63,6 +63,7 @@ export default async (req: Request) => {
     job_id: job.id,
     status: job.status,
     error: job.error ?? undefined,
+    meta: job.meta ?? undefined,
     started_at: job.started_at,
     updated_at: job.updated_at,
   });
