@@ -52,10 +52,12 @@ export default async (req: Request) => {
       return Response.json({ error: 'Missing scanId, config, or queries' }, { status: 400 });
     }
 
-    // ── Tier-based access control ──────────────────────────────────────────
-    const access = await enforceAccess(userId, 'aio-optimization');
-    if (!access.allowed) {
-      return Response.json({ error: access.reason ?? 'Access denied' }, { status: 403 });
+    // ── Tier-based access control (skip for API/internal users) ────────────
+    if (!userId.startsWith('api:')) {
+      const access = await enforceAccess(userId, 'aio-optimization');
+      if (!access.allowed) {
+        return Response.json({ error: access.reason ?? 'Access denied' }, { status: 403 });
+      }
     }
 
     log.info('scan.dispatch', { function_name: 'dispatch-scan', entity_type: 'scan', entity_id: scanId, user_id: userId, user_email: email, correlation_id: scanId, meta: { engines: config.engines, query_count: queries.length } });
