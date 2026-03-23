@@ -11,6 +11,7 @@
  * No enforceAccess needed — this function is only called internally
  */
 import { createClient } from '@supabase/supabase-js';
+import { log } from './_shared/logger.js';
 
 const APP_NAME = 'aio-optimization';
 
@@ -24,6 +25,13 @@ export default async (req: Request) => {
   const apiKey = req.headers.get('X-API-Key') || '';
   const siteUrl = process.env.URL || 'http://localhost:8888';
   const supabase = getSupabase();
+
+  log.info('aio-pipeline.start', {
+    function_name: 'aio-pipeline-background',
+    entity_type: 'scan',
+    entity_id: scanId,
+    meta: { engines: selectedEngines, queryCount },
+  });
 
   try {
     // Update status
@@ -59,6 +67,13 @@ export default async (req: Request) => {
 
     const { queries } = await queryResp.json();
 
+    log.info('aio-pipeline.queries_generated', {
+      function_name: 'aio-pipeline-background',
+      entity_type: 'scan',
+      entity_id: scanId,
+      meta: { query_count: queries?.length, engines: selectedEngines },
+    });
+
     // Update status
     await supabase.from('job_status').update({
       status: 'streaming',
@@ -88,6 +103,13 @@ export default async (req: Request) => {
       return;
     }
 
+    log.info('aio-pipeline.dispatched', {
+      function_name: 'aio-pipeline-background',
+      entity_type: 'scan',
+      entity_id: scanId,
+      meta: { query_count: queries?.length, engines: selectedEngines },
+    });
+
     // Scan is now running — engine workers will update progress via scan_engines table
     // The review-background function will set job_status to 'complete' when done
     await supabase.from('job_status').update({
@@ -97,6 +119,12 @@ export default async (req: Request) => {
     }).eq('id', scanId);
 
   } catch (err) {
+    log.error('aio-pipeline.error', {
+      function_name: 'aio-pipeline-background',
+      message: err instanceof Error ? err.message : String(err),
+      entity_type: 'scan',
+      entity_id: scanId,
+    });
     await supabase.from('job_status').update({
       status: 'error',
       error: `Pipeline error: ${err instanceof Error ? err.message : String(err)}`,

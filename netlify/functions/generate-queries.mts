@@ -1,6 +1,7 @@
 import { GoogleGenAI } from '@google/genai';
 import { requireAuthOrEmbed } from './_shared/auth.js';
 import { buildQueryGeneratorPrompt } from './_shared/queryGeneratorPrompt.js';
+import { log } from './_shared/logger.js';
 import type { ConceptType, GeneratedQuery, EngineId } from './_shared/types.js';
 
 /**
@@ -43,6 +44,11 @@ export default async (req: Request) => {
     }
 
     const clampedCount = Math.max(20, Math.min(80, query_count));
+
+    log.info('generate-queries.start', {
+      function_name: 'generate-queries',
+      meta: { concept_name, concept_type, concept_category, engines: engines.length, query_count: clampedCount },
+    });
 
     // Generate queries using Gemini
     const prompt = buildQueryGeneratorPrompt({
@@ -112,6 +118,11 @@ export default async (req: Request) => {
       queriesByEngine[engineId] = queries;
     }
 
+    log.info('generate-queries.complete', {
+      function_name: 'generate-queries',
+      meta: { query_count: queries.length, engines: engines.length, total_api_calls: queries.length * engines.length },
+    });
+
     return Response.json({
       queries,
       queries_by_engine: queriesByEngine,
@@ -120,6 +131,10 @@ export default async (req: Request) => {
       total_api_calls: queries.length * engines.length,
     });
   } catch (err) {
+    log.error('generate-queries.error', {
+      function_name: 'generate-queries',
+      message: err instanceof Error ? err.message : String(err),
+    });
     console.error('generate-queries error:', err);
     const status = String(err).includes('Unauthorized') ? 401 : 500;
     return Response.json({ error: String(err) }, { status });
