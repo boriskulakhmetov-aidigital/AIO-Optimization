@@ -7,7 +7,7 @@ import {
 import type { SupabaseClient } from '@boriskulakhmetov-aidigital/design-system'
 import '@boriskulakhmetov-aidigital/design-system/style.css'
 import { createClient } from '@supabase/supabase-js'
-import { parseSSEStream } from '../lib/sseParser'
+import { parseSSEStream } from '@boriskulakhmetov-aidigital/design-system'
 import type { AppPhase, AIOReportData } from '../lib/types'
 import { ScanDashboard } from '../components/ScanDashboard'
 import { AIOReport } from '../components/report/AIOReport'
