@@ -17,7 +17,7 @@ export default async (req: Request) => {
   }
 
   try {
-    await requireAuthOrEmbed(req);
+    const { userId } = await requireAuthOrEmbed(req);
 
     const body = await req.json();
     const {
@@ -47,6 +47,7 @@ export default async (req: Request) => {
 
     log.info('generate-queries.start', {
       function_name: 'generate-queries',
+      user_id: userId,
       meta: { concept_name, concept_type, concept_category, engines: engines.length, query_count: clampedCount },
     });
 
@@ -120,6 +121,7 @@ export default async (req: Request) => {
 
     log.info('generate-queries.complete', {
       function_name: 'generate-queries',
+      user_id: userId,
       meta: { query_count: queries.length, engines: engines.length, total_api_calls: queries.length * engines.length },
     });
 
@@ -133,6 +135,7 @@ export default async (req: Request) => {
   } catch (err) {
     log.error('generate-queries.error', {
       function_name: 'generate-queries',
+      user_id: userId,
       message: err instanceof Error ? err.message : String(err),
     });
     console.error('generate-queries error:', err);

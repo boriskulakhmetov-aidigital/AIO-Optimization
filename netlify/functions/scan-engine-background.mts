@@ -139,7 +139,7 @@ export default async (req: Request) => {
       const synthResp = await fetch(`${origin}/.netlify/functions/synthesize-engine-background`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ scanId, engineJobId }),
+        body: JSON.stringify({ scanId, engineJobId, userId: body.userId }),
       });
       console.log(`[scan-engine-background] Synthesis trigger for ${engineId}: ${synthResp.status}`);
     } catch (err) {

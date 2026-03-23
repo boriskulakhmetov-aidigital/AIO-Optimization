@@ -36,13 +36,14 @@ export default async (req: Request) => {
     return new Response('Missing scanId or engineJobId', { status: 400 });
   }
 
-  const { scanId, engineJobId } = body as {
+  const { scanId, engineJobId, userId } = body as {
     scanId: string;
     engineJobId: string;
+    userId?: string;
   };
 
   const startTime = Date.now();
-  log.info('synthesis.start', { function_name: 'synthesize-engine-background', entity_type: 'scan', entity_id: engineJobId, correlation_id: scanId, ai_provider: 'gemini', ai_model: 'gemini-3.1-pro-preview' });
+  log.info('synthesis.start', { function_name: 'synthesize-engine-background', user_id: userId, entity_type: 'scan', entity_id: engineJobId, correlation_id: scanId, ai_provider: 'gemini', ai_model: 'gemini-3.1-pro-preview' });
 
   try {
     // Load engine info and scan context
@@ -162,7 +163,7 @@ export default async (req: Request) => {
 
   } catch (err) {
     console.error(`synthesize-engine-background error (${engineJobId}):`, err);
-    log.error('synthesis.error', { function_name: 'synthesize-engine-background', entity_type: 'scan', entity_id: engineJobId, correlation_id: scanId, error: err, error_category: 'gemini_api', duration_ms: Date.now() - startTime });
+    log.error('synthesis.error', { function_name: 'synthesize-engine-background', user_id: userId || scan?.user_id, entity_type: 'scan', entity_id: engineJobId, correlation_id: scanId, error: err, error_category: 'gemini_api', duration_ms: Date.now() - startTime });
     await updateScanEngineStatus(engineJobId, 'error', `Synthesis failed: ${err}`);
   }
 
@@ -197,7 +198,7 @@ async function checkAndTriggerReview(scanId: string, req: Request) {
     const reviewResp = await fetch(`${origin}/.netlify/functions/review-background`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ scanId }),
+      body: JSON.stringify({ scanId, userId: userId || scan?.user_id }),
     });
     console.log(`[synthesize] Review trigger response: ${reviewResp.status}`);
   } catch (err) {

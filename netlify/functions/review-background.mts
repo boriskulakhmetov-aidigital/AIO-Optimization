@@ -36,9 +36,9 @@ export default async (req: Request) => {
     return new Response('Missing scanId', { status: 400 });
   }
 
-  const { scanId } = body as { scanId: string };
+  const { scanId, userId } = body as { scanId: string; userId?: string };
   const startTime = Date.now();
-  log.info('review.start', { function_name: 'review-background', entity_type: 'scan', entity_id: scanId, correlation_id: scanId, ai_provider: 'gemini', ai_model: 'gemini-3.1-pro-preview' });
+  log.info('review.start', { function_name: 'review-background', user_id: userId, entity_type: 'scan', entity_id: scanId, correlation_id: scanId, ai_provider: 'gemini', ai_model: 'gemini-3.1-pro-preview' });
 
   try {
     // Write job status so frontend can track review phase via Realtime
@@ -197,7 +197,7 @@ export default async (req: Request) => {
 
   } catch (err) {
     console.error(`review-background error (${scanId}):`, err);
-    log.error('review.error', { function_name: 'review-background', entity_type: 'scan', entity_id: scanId, correlation_id: scanId, error: err, error_category: 'gemini_api', duration_ms: Date.now() - startTime });
+    log.error('review.error', { function_name: 'review-background', user_id: userId, entity_type: 'scan', entity_id: scanId, correlation_id: scanId, error: err, error_category: 'gemini_api', duration_ms: Date.now() - startTime });
     await updateScanStatus(scanId, 'error', `Review failed: ${err}`);
     await writeJobStatus(scanId, { status: 'error', error: `Review failed: ${err}` });
   }
