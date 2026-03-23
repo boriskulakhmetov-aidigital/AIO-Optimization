@@ -13,7 +13,7 @@ const APP_NAME = 'aio-optimization';
 
 // Only include engines that have API keys configured
 // Others will be added as keys become available
-const DEFAULT_ENGINES = ['gemini_free', 'google_sge'];
+const DEFAULT_ENGINES = ['gemini_free', 'google_sge', 'chatgpt_free'];
 
 function getSupabase() {
   const url = process.env.SUPABASE_URL!;

@@ -5,7 +5,7 @@
 // KEY STATUS:
 //   ✅ WORKING   — GEMINI_API_KEY available: gemini_free, gemini_pro, google_sge
 //   🔑 NEEDS KEY — Placeholder client returns structured mock until key is added:
-//        OPENAI_API_KEY      → chatgpt_free, chatgpt_pro
+//        OPENAI_API_KEY      → chatgpt_free (gpt-5.4), chatgpt_pro (gpt-5.4-pro)
 //        ANTHROPIC_API_KEY   → claude_free, claude_pro
 //        XAI_API_KEY         → grok_free, grok_pro
 //        PERPLEXITY_API_KEY  → perplexity
@@ -57,6 +57,7 @@ export async function queryEngine(
         model: engine.model,
         queryText,
         engineId,
+        useMaxCompletionTokens: engine.model.startsWith('gpt-5'),
       });
 
     case 'anthropic':
@@ -147,7 +148,7 @@ async function queryGeminiWithSearch(
 //    this client will work automatically — no code changes needed.
 //
 // Keys to add:
-//   OPENAI_API_KEY      — https://platform.openai.com/api-keys
+//   OPENAI_API_KEY      — https://platform.openai.com/api-keys (GPT-5.4 / GPT-5.4-pro)
 //   XAI_API_KEY         — https://console.x.ai/
 //   PERPLEXITY_API_KEY  — https://www.perplexity.ai/settings/api
 //   TOGETHER_API_KEY    — https://api.together.xyz/settings/api-keys
@@ -159,10 +160,16 @@ async function queryOpenAICompatible(params: {
   model: string;
   queryText: string;
   engineId: EngineId;
+  useMaxCompletionTokens?: boolean;
 }): Promise<EngineResponse> {
-  const { apiKey, baseUrl, model, queryText, engineId } = params;
+  const { apiKey, baseUrl, model, queryText, engineId, useMaxCompletionTokens } = params;
 
   try {
+    // GPT-5.x models use max_completion_tokens instead of max_tokens
+    const tokenParam = useMaxCompletionTokens
+      ? { max_completion_tokens: 2048 }
+      : { max_tokens: 2048 };
+
     const response = await fetch(`${baseUrl}/chat/completions`, {
       method: 'POST',
       headers: {
@@ -172,7 +179,7 @@ async function queryOpenAICompatible(params: {
       body: JSON.stringify({
         model,
         messages: [{ role: 'user', content: queryText }],
-        max_tokens: 2048,
+        ...tokenParam,
         temperature: 0.7,
       }),
     });
