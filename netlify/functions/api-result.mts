@@ -112,23 +112,33 @@ export default async (req: Request) => {
     markdownReport = lines.join('\n');
 
     // Backfill scans.report so future share links work without re-assembly
-    if (markdownReport) {
-      await supabase.from('scans').update({ report: markdownReport }).eq('id', scanId);
-    }
+    // (combined with share_token update below to reduce round trips)
   }
   const visualReport = scan.report_data || reviewData || null;
 
-  // Auto-generate share link for API consumers
+  // Auto-generate share link + backfill report in a single UPDATE
   let shareToken = scan.share_token;
+  const updatePayload: Record<string, unknown> = {};
+
   if (!shareToken) {
     shareToken = crypto.randomUUID();
-    await supabase.from('scans')
-      .update({ share_token: shareToken, is_public: true })
-      .eq('id', scanId);
+    updatePayload.share_token = shareToken;
+    updatePayload.is_public = true;
   } else if (!scan.is_public) {
-    await supabase.from('scans')
-      .update({ is_public: true })
+    updatePayload.is_public = true;
+  }
+
+  if (markdownReport && !(scan as any).report) {
+    updatePayload.report = markdownReport;
+  }
+
+  if (Object.keys(updatePayload).length > 0) {
+    const { error: updateErr } = await supabase.from('scans')
+      .update(updatePayload)
       .eq('id', scanId);
+    if (updateErr) {
+      console.error('api-result: failed to update scan', scanId, updateErr.message);
+    }
   }
 
   // Get org theme slug for branded report URL
