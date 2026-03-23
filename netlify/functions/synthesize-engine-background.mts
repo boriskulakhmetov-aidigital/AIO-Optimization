@@ -11,7 +11,7 @@ import { buildSynthesizerPrompt, formatQueriesForSynthesis } from './_shared/syn
 import type { EngineId, EngineSynthesis } from './_shared/types.js';
 import { log } from './_shared/logger.js';
 import { trackTokens } from './_shared/access.js';
-import { extractGeminiTokens } from '@boriskulakhmetov-aidigital/design-system/utils';
+import { extractGeminiTokens, repairJson } from '@boriskulakhmetov-aidigital/design-system/utils';
 
 /**
  * POST /synthesize-engine-background  (background function)
@@ -119,11 +119,21 @@ export default async (req: Request) => {
     try {
       synthesis = JSON.parse(responseText);
     } catch {
-      const match = responseText.match(/\{[\s\S]*\}/);
-      if (match) {
-        synthesis = JSON.parse(match[0]);
-      } else {
-        throw new Error('Failed to parse synthesis response as JSON');
+      // Gemini Pro sometimes produces malformed JSON (trailing commas, truncation)
+      // Try repairJson before giving up
+      try {
+        synthesis = JSON.parse(repairJson(responseText));
+      } catch {
+        const match = responseText.match(/\{[\s\S]*\}/);
+        if (match) {
+          try {
+            synthesis = JSON.parse(repairJson(match[0]));
+          } catch {
+            throw new Error('Failed to parse synthesis response as JSON');
+          }
+        } else {
+          throw new Error('Failed to parse synthesis response as JSON');
+        }
       }
     }
 

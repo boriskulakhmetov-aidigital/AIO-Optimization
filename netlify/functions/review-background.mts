@@ -5,7 +5,7 @@ import {
   getQueriesForScan, writeJobStatus, supabase,
 } from './_shared/supabase.js';
 import { trackUsage, trackTokens } from './_shared/access.js';
-import { extractGeminiTokens } from '@boriskulakhmetov-aidigital/design-system/utils';
+import { extractGeminiTokens, repairJson } from '@boriskulakhmetov-aidigital/design-system/utils';
 import { getEngineName } from './_shared/engineRegistry.js';
 import { buildReviewerPrompt, formatSynthesesForReview } from './_shared/reviewerPrompt.js';
 import type {
@@ -106,16 +106,24 @@ export default async (req: Request) => {
       trackTokens(scan.user_id, 'aio-optimization', 'gemini', 'gemini-3.1-pro-preview', reviewTokens.inputTokens, reviewTokens.outputTokens, reviewTokens.totalTokens);
     }
 
-    // Parse the review JSON
+    // Parse the review JSON (with repairJson fallback for Gemini malformed output)
     let review: CrossEngineReview;
     try {
       review = JSON.parse(responseText);
     } catch {
-      const match = responseText.match(/\{[\s\S]*\}/);
-      if (match) {
-        review = JSON.parse(match[0]);
-      } else {
-        throw new Error('Failed to parse review response as JSON');
+      try {
+        review = JSON.parse(repairJson(responseText));
+      } catch {
+        const match = responseText.match(/\{[\s\S]*\}/);
+        if (match) {
+          try {
+            review = JSON.parse(repairJson(match[0]));
+          } catch {
+            throw new Error('Failed to parse review response as JSON');
+          }
+        } else {
+          throw new Error('Failed to parse review response as JSON');
+        }
       }
     }
 
