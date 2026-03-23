@@ -35,6 +35,7 @@ export default async (req: Request) => {
 
   log.info('aio-pipeline.start', {
     function_name: 'aio-pipeline-background',
+    user_id: userId,
     entity_type: 'scan',
     entity_id: scanId,
     meta: { engines: selectedEngines, queryCount },
@@ -117,6 +118,7 @@ export default async (req: Request) => {
 
     log.info('aio-pipeline.queries_generated', {
       function_name: 'aio-pipeline-background',
+      user_id: userId,
       entity_type: 'scan',
       entity_id: scanId,
       meta: { query_count: queries?.length, engines: selectedEngines },
@@ -210,6 +212,7 @@ export default async (req: Request) => {
       } catch (err) {
         log.warn('aio-pipeline.engine_trigger_failed', {
           function_name: 'aio-pipeline-background',
+          user_id: userId,
           message: err instanceof Error ? err.message : String(err),
           meta: { scanId, engineId },
         });
@@ -223,6 +226,7 @@ export default async (req: Request) => {
 
     log.info('aio-pipeline.dispatched', {
       function_name: 'aio-pipeline-background',
+      user_id: userId,
       entity_type: 'scan',
       entity_id: scanId,
       meta: { query_count: queries.length, engines: availableEngines, total_api_calls: queries.length * availableEngines.length },
@@ -239,6 +243,7 @@ export default async (req: Request) => {
   } catch (err) {
     log.error('aio-pipeline.error', {
       function_name: 'aio-pipeline-background',
+      user_id: userId,
       message: err instanceof Error ? err.message : String(err),
       entity_type: 'scan',
       entity_id: scanId,

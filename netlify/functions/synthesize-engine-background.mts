@@ -154,7 +154,7 @@ export default async (req: Request) => {
     // Save synthesis
     await saveScanEngineSynthesis(engineJobId, synthesisData as EngineSynthesis);
 
-    log.info('synthesis.complete', { function_name: 'synthesize-engine-background', entity_type: 'scan', entity_id: engineJobId, correlation_id: scanId, ai_provider: 'gemini', ai_model: 'gemini-3.1-pro-preview', duration_ms: Date.now() - startTime, ai_input_tokens: synthTokens.inputTokens, ai_output_tokens: synthTokens.outputTokens, ai_total_tokens: synthTokens.totalTokens, meta: { engine_id: engineId, ai_sov: synthesis.ai_sov } });
+    log.info('synthesis.complete', { function_name: 'synthesize-engine-background', user_id: scan.user_id, entity_type: 'scan', entity_id: engineJobId, correlation_id: scanId, ai_provider: 'gemini', ai_model: 'gemini-3.1-pro-preview', duration_ms: Date.now() - startTime, ai_input_tokens: synthTokens.inputTokens, ai_output_tokens: synthTokens.outputTokens, ai_total_tokens: synthTokens.totalTokens, meta: { engine_id: engineId, ai_sov: synthesis.ai_sov } });
     console.log(`Synthesis complete for ${engineName}: AI-SOV=${synthesis.ai_sov}%, RSI=${synthesis.recommendation_strength_index}`);
 
     // Check if all engines are done and trigger review
