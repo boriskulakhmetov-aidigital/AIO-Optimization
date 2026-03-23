@@ -10,6 +10,8 @@ import { getEngineName } from './_shared/engineRegistry.js';
 import { buildSynthesizerPrompt, formatQueriesForSynthesis } from './_shared/synthesizerPrompt.js';
 import type { EngineId, EngineSynthesis } from './_shared/types.js';
 import { log } from './_shared/logger.js';
+import { trackTokens } from './_shared/access.js';
+import { extractGeminiTokens } from '@boriskulakhmetov-aidigital/design-system/utils';
 
 /**
  * POST /synthesize-engine-background  (background function)
@@ -96,6 +98,12 @@ export default async (req: Request) => {
 
     const responseText = result.text ?? '';
 
+    // Track token usage
+    const synthTokens = extractGeminiTokens(result);
+    if (scan.user_id) {
+      trackTokens(scan.user_id, 'aio-optimization', 'gemini', 'gemini-3.1-pro-preview', synthTokens.inputTokens, synthTokens.outputTokens, synthTokens.totalTokens);
+    }
+
     // Parse the synthesis JSON
     let synthesis: EngineSynthesis & { per_query_scores?: Array<{
       query_id: string;
@@ -146,7 +154,7 @@ export default async (req: Request) => {
     // Save synthesis
     await saveScanEngineSynthesis(engineJobId, synthesisData as EngineSynthesis);
 
-    log.info('synthesis.complete', { function_name: 'synthesize-engine-background', entity_type: 'scan', entity_id: engineJobId, correlation_id: scanId, ai_provider: 'gemini', ai_model: 'gemini-3.1-pro-preview', duration_ms: Date.now() - startTime, meta: { engine_id: engineId, ai_sov: synthesis.ai_sov } });
+    log.info('synthesis.complete', { function_name: 'synthesize-engine-background', entity_type: 'scan', entity_id: engineJobId, correlation_id: scanId, ai_provider: 'gemini', ai_model: 'gemini-3.1-pro-preview', duration_ms: Date.now() - startTime, ai_input_tokens: synthTokens.inputTokens, ai_output_tokens: synthTokens.outputTokens, ai_total_tokens: synthTokens.totalTokens, meta: { engine_id: engineId, ai_sov: synthesis.ai_sov } });
     console.log(`Synthesis complete for ${engineName}: AI-SOV=${synthesis.ai_sov}%, RSI=${synthesis.recommendation_strength_index}`);
 
     // Check if all engines are done and trigger review

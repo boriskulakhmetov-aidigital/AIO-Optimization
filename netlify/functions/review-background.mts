@@ -4,7 +4,8 @@ import {
   saveScanReview, saveScanReportData, updateScanStatus,
   getQueriesForScan, writeJobStatus, supabase,
 } from './_shared/supabase.js';
-import { trackUsage } from './_shared/access.js';
+import { trackUsage, trackTokens } from './_shared/access.js';
+import { extractGeminiTokens } from '@boriskulakhmetov-aidigital/design-system/utils';
 import { getEngineName } from './_shared/engineRegistry.js';
 import { buildReviewerPrompt, formatSynthesesForReview } from './_shared/reviewerPrompt.js';
 import type {
@@ -74,6 +75,7 @@ export default async (req: Request) => {
     // Call Gemini for cross-engine review (with retry for transient 502s)
     const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY! });
     let responseText = '';
+    let lastResult: any = null;
     for (let attempt = 0; attempt < 3; attempt++) {
       try {
         const result = await ai.models.generateContent({
@@ -87,6 +89,7 @@ export default async (req: Request) => {
           },
         });
         responseText = result.text ?? '';
+        lastResult = result;
         break; // success
       } catch (retryErr: any) {
         if (attempt < 2 && (retryErr.message?.includes('502') || retryErr.message?.includes('503') || retryErr.message?.includes('temporary'))) {
@@ -95,6 +98,12 @@ export default async (req: Request) => {
         }
         throw retryErr; // non-transient error, rethrow
       }
+    }
+
+    // Track token usage
+    const reviewTokens = extractGeminiTokens(lastResult ?? {});
+    if (scan.user_id) {
+      trackTokens(scan.user_id, 'aio-optimization', 'gemini', 'gemini-3.1-pro-preview', reviewTokens.inputTokens, reviewTokens.outputTokens, reviewTokens.totalTokens);
     }
 
     // Parse the review JSON
@@ -183,7 +192,7 @@ export default async (req: Request) => {
       );
     }
 
-    log.info('review.complete', { function_name: 'review-background', entity_type: 'scan', entity_id: scanId, correlation_id: scanId, ai_provider: 'gemini', ai_model: 'gemini-3.1-pro-preview', duration_ms: Date.now() - startTime, meta: { ai_sov: review.overall_ai_sov, action_items: review.action_items?.length ?? 0 } });
+    log.info('review.complete', { function_name: 'review-background', entity_type: 'scan', entity_id: scanId, correlation_id: scanId, ai_provider: 'gemini', ai_model: 'gemini-3.1-pro-preview', duration_ms: Date.now() - startTime, ai_input_tokens: reviewTokens.inputTokens, ai_output_tokens: reviewTokens.outputTokens, ai_total_tokens: reviewTokens.totalTokens, meta: { ai_sov: review.overall_ai_sov, action_items: review.action_items?.length ?? 0 } });
     console.log(`Review complete for scan ${scanId}: AI-SOV=${review.overall_ai_sov}%, ${review.action_items?.length ?? 0} action items`);
 
   } catch (err) {
