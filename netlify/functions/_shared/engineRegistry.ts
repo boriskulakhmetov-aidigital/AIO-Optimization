@@ -32,7 +32,7 @@ export const ENGINE_REGISTRY: Record<EngineId, EngineConfig> = {
     icon: 'openai',
     maxConcurrency: 2,
     rateLimitPerMin: 30,
-    apiKeyEnvVar: 'OPENAI_API_KEY',
+    apiKeyEnvVar: 'OPENAI_FREE_API_KEY',
     enabled: true,
   },
   chatgpt_pro: {
@@ -46,7 +46,7 @@ export const ENGINE_REGISTRY: Record<EngineId, EngineConfig> = {
     icon: 'openai',
     maxConcurrency: 1,
     rateLimitPerMin: 15,
-    apiKeyEnvVar: 'OPENAI_API_KEY',
+    apiKeyEnvVar: 'OPENAI_PRO_API_KEY',
     enabled: true,
   },
   gemini_free: {

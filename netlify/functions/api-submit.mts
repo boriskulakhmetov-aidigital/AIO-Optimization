@@ -11,9 +11,8 @@ import { validateApiKey, logApiRequest, apiKeyErrorResponse } from '@boriskulakh
 
 const APP_NAME = 'aio-optimization';
 
-// Only include engines that have API keys configured
-// Others will be added as keys become available
-const DEFAULT_ENGINES = ['gemini_free', 'google_sge', 'chatgpt_free'];
+// All 5 active engines — each has its own API key env var
+const DEFAULT_ENGINES = ['gemini_free', 'gemini_pro', 'google_sge', 'chatgpt_free', 'chatgpt_pro'];
 
 function getSupabase() {
   const url = process.env.SUPABASE_URL!;
