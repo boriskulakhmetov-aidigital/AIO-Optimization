@@ -109,7 +109,7 @@ export default async (req: Request) => {
   fetch(`${siteUrl}/.netlify/functions/aio-pipeline-background`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'X-API-Key': apiKey },
-    body: JSON.stringify({ scanId, scanConfig, selectedEngines, queryCount: clampedQueryCount }),
+    body: JSON.stringify({ scanId, scanConfig, selectedEngines, queryCount: clampedQueryCount, userId: auth.userId, userEmail: auth.email }),
   }).catch(() => {}); // fire-and-forget
 
   // Log the API request

@@ -13,8 +13,13 @@
 import { GoogleGenAI } from '@google/genai';
 import { createClient } from '@supabase/supabase-js';
 import { buildQueryGeneratorPrompt } from './_shared/queryGeneratorPrompt.js';
+import {
+  createScan, updateScanStatus, createScanEngine,
+  bulkInsertQueries, incrementUserScanCount, writeJobStatus,
+} from './_shared/supabase.js';
+import { getEngine } from './_shared/engineRegistry.js';
 import { log } from './_shared/logger.js';
-import type { GeneratedQuery } from './_shared/types.js';
+import type { GeneratedQuery, EngineId } from './_shared/types.js';
 
 const APP_NAME = 'aio-optimization';
 
@@ -24,8 +29,7 @@ function getSupabase() {
 
 export default async (req: Request) => {
   const body = await req.json();
-  const { scanId, scanConfig, selectedEngines, queryCount } = body;
-  const apiKey = req.headers.get('X-API-Key') || '';
+  const { scanId, scanConfig, selectedEngines, queryCount, userId, userEmail } = body;
   const siteUrl = process.env.URL || 'http://localhost:8888';
   const supabase = getSupabase();
 
@@ -118,47 +122,116 @@ export default async (req: Request) => {
       meta: { query_count: queries?.length, engines: selectedEngines },
     });
 
-    // Update status
+    // Step 2: Dispatch scan INLINE (no function-to-function call)
     await supabase.from('job_status').update({
       status: 'streaming',
       meta: { scan_id: scanId, phase: 'dispatching', query_count: queries?.length },
       updated_at: new Date().toISOString(),
     }).eq('id', scanId);
 
-    // Step 2: Dispatch scan with pre-generated queries
-    const dispatchResp = await fetch(`${siteUrl}/.netlify/functions/dispatch-scan`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'X-API-Key': apiKey },
-      body: JSON.stringify({
-        scanId,
-        config: scanConfig,
-        queries,
-        messages: [],
-      }),
+    // 2a. Create scan record
+    await createScan({
+      id: scanId,
+      userId: userId || `api:pipeline`,
+      userEmail: userEmail || '',
+      config: { ...scanConfig, query_count: queries.length },
+      messages: [],
     });
 
-    if (!dispatchResp.ok) {
-      const errText = await dispatchResp.text().catch(() => 'Unknown error');
+    // 2b. Filter engines with configured API keys
+    const availableEngines = (selectedEngines as EngineId[]).filter(eid => {
+      const eng = getEngine(eid);
+      return !!process.env[eng.apiKeyEnvVar];
+    });
+
+    if (availableEngines.length === 0) {
       await supabase.from('job_status').update({
         status: 'error',
-        error: `Failed to dispatch scan: ${dispatchResp.status} ${errText.slice(0, 200)}`,
+        error: 'No engines have API keys configured',
         updated_at: new Date().toISOString(),
       }).eq('id', scanId);
       return;
+    }
+
+    // 2c. Create engine jobs + insert queries
+    const engineJobIds: Record<string, string> = {};
+    for (const engineId of availableEngines) {
+      const engineJobId = `${scanId}_${engineId}`;
+      engineJobIds[engineId] = engineJobId;
+
+      await createScanEngine({
+        id: engineJobId,
+        scanId,
+        engineId,
+        queriesTotal: queries.length,
+      });
+
+      await bulkInsertQueries(queries.map((q, idx) => ({
+        id: `${engineJobId}_q${idx}`,
+        scanEngineId: engineJobId,
+        scanId,
+        queryText: q.text,
+        intentType: q.intent_type,
+        intentSubtype: q.intent_subtype,
+      })));
+    }
+
+    // 2d. Write initial scanning status
+    await writeJobStatus(scanId, {
+      status: 'scanning',
+      partial_text: JSON.stringify({
+        scan_id: scanId,
+        status: 'scanning',
+        engines: availableEngines.map(eid => ({
+          engine_id: eid, status: 'pending',
+          queries_total: queries.length, queries_done: 0,
+        })),
+      }),
+    });
+    await updateScanStatus(scanId, 'scanning');
+
+    // 2e. Fire background workers — one per engine
+    // (These ARE fire-and-forget background functions that return 202 immediately)
+    await Promise.all(availableEngines.map(async (engineId) => {
+      try {
+        await fetch(`${siteUrl}/.netlify/functions/scan-engine-background`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            scanId, engineId,
+            engineJobId: engineJobIds[engineId],
+            conceptName: scanConfig.concept_name,
+            conceptType: scanConfig.concept_type,
+            conceptCategory: scanConfig.concept_category,
+            conceptContext: scanConfig.concept_context,
+          }),
+        });
+      } catch (err) {
+        log.warn('aio-pipeline.engine_trigger_failed', {
+          function_name: 'aio-pipeline-background',
+          message: err instanceof Error ? err.message : String(err),
+          meta: { scanId, engineId },
+        });
+      }
+    }));
+
+    // 2f. Track usage
+    if (userId) {
+      await incrementUserScanCount(userId).catch(() => {});
     }
 
     log.info('aio-pipeline.dispatched', {
       function_name: 'aio-pipeline-background',
       entity_type: 'scan',
       entity_id: scanId,
-      meta: { query_count: queries?.length, engines: selectedEngines },
+      meta: { query_count: queries.length, engines: availableEngines, total_api_calls: queries.length * availableEngines.length },
     });
 
-    // Scan is now running — engine workers will update progress via scan_engines table
-    // The review-background function will set job_status to 'complete' when done
+    // Scan is now running — engine workers update progress via scan_engines table (Realtime)
+    // The review-background function sets job_status to 'complete' when all engines finish
     await supabase.from('job_status').update({
       status: 'streaming',
-      meta: { scan_id: scanId, phase: 'scanning', query_count: queries?.length, engines: selectedEngines },
+      meta: { scan_id: scanId, phase: 'scanning', query_count: queries.length, engines: availableEngines },
       updated_at: new Date().toISOString(),
     }).eq('id', scanId);
 
