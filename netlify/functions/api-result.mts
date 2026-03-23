@@ -65,7 +65,7 @@ export default async (req: Request) => {
 
   const { data: scan } = await supabase
     .from('scans')
-    .select('id, concept_name, concept_type, concept_category, report_data, intake_summary, completed_at, share_token, is_public')
+    .select('id, concept_name, concept_type, concept_category, report_data, report, intake_summary, completed_at, share_token, is_public')
     .eq('id', scanId)
     .maybeSingle();
 
@@ -80,11 +80,42 @@ export default async (req: Request) => {
     .eq('scan_id', scanId)
     .maybeSingle();
 
-  // Build markdown from review_data
-  const reviewData = review?.review_data as Record<string, unknown> | null;
-  const markdownReport = reviewData
-    ? `# AIO Optimization Report: ${scan.concept_name}\n\n${reviewData.executive_summary || ''}\n\n${reviewData.biggest_gap || ''}`
-    : '';
+  // Build markdown from review_data (or use pre-built scans.report)
+  const reviewData = review?.review_data as Record<string, any> | null;
+  let markdownReport = (scan as any).report as string || '';
+  if (!markdownReport && reviewData) {
+    const lines: string[] = [];
+    lines.push(`# AIO Optimization Report: ${scan.concept_name}`);
+    lines.push('');
+    if (reviewData.executive_summary) { lines.push('## Executive Summary'); lines.push(reviewData.executive_summary); lines.push(''); }
+    if (reviewData.biggest_gap) { lines.push('## Key Finding'); lines.push(reviewData.biggest_gap); lines.push(''); }
+    if (reviewData.overall_ai_sov !== undefined) { lines.push(`## Overall AI Share of Voice: ${reviewData.overall_ai_sov}%`); lines.push(''); }
+    if (reviewData.engine_rankings?.length > 0) {
+      lines.push('## Engine Rankings');
+      for (const eng of reviewData.engine_rankings) {
+        lines.push(`- **${eng.engine_name}:** Grade ${eng.overall_grade} — AI-SOV ${eng.ai_sov}%, Sentiment ${eng.net_sentiment >= 0 ? '+' : ''}${eng.net_sentiment}`);
+      }
+      lines.push('');
+    }
+    if (reviewData.competitive_landscape) { lines.push('## Competitive Landscape'); lines.push(reviewData.competitive_landscape); lines.push(''); }
+    if (reviewData.action_items?.length > 0) {
+      lines.push('## Action Items');
+      for (const item of reviewData.action_items) {
+        lines.push(`### ${item.action_text || 'Action'}`);
+        if (item.rationale) lines.push(item.rationale);
+        lines.push(`**Priority:** ${item.priority}`);
+        if (item.kpi_target) lines.push(`**KPI Target:** ${item.kpi_target}`);
+        if (item.estimated_impact) lines.push(`**Estimated Impact:** ${item.estimated_impact}`);
+        lines.push('');
+      }
+    }
+    markdownReport = lines.join('\n');
+
+    // Backfill scans.report so future share links work without re-assembly
+    if (markdownReport) {
+      await supabase.from('scans').update({ report: markdownReport }).eq('id', scanId);
+    }
+  }
   const visualReport = scan.report_data || reviewData || null;
 
   // Auto-generate share link for API consumers

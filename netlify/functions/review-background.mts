@@ -2,7 +2,7 @@ import { GoogleGenAI } from '@google/genai';
 import {
   getScanById, getScanEngines, getScanReview,
   saveScanReview, saveScanReportData, updateScanStatus,
-  getQueriesForScan, writeJobStatus,
+  getQueriesForScan, writeJobStatus, supabase,
 } from './_shared/supabase.js';
 import { trackUsage } from './_shared/access.js';
 import { getEngineName } from './_shared/engineRegistry.js';
@@ -169,6 +169,10 @@ export default async (req: Request) => {
     await saveScanReportData(scanId, reportData);
     // saveScanReportData already sets status to 'complete'
 
+    // Also write assembled markdown to scans.report for public report page fallback
+    const markdownReport = assembleMarkdownReport(scan, review);
+    await supabase.from('scans').update({ report: markdownReport }).eq('id', scanId);
+
     // Write job status for Realtime — signals frontend to fetch report
     await writeJobStatus(scanId, { status: 'complete', completed_at: new Date().toISOString() });
 
@@ -199,6 +203,50 @@ export default async (req: Request) => {
 function truncate(text: string, maxLen: number): string {
   if (text.length <= maxLen) return text;
   return text.slice(0, maxLen - 3) + '...';
+}
+
+function assembleMarkdownReport(scan: any, review: CrossEngineReview): string {
+  const lines: string[] = [];
+  lines.push(`# AIO Optimization Report: ${scan.concept_name || 'Unknown'}`);
+  lines.push('');
+  if (review.executive_summary) {
+    lines.push('## Executive Summary');
+    lines.push(review.executive_summary);
+    lines.push('');
+  }
+  if (review.biggest_gap) {
+    lines.push('## Key Finding');
+    lines.push(review.biggest_gap);
+    lines.push('');
+  }
+  if (review.overall_ai_sov !== undefined) {
+    lines.push(`## Overall AI Share of Voice: ${review.overall_ai_sov}%`);
+    lines.push('');
+  }
+  if (review.engine_rankings?.length > 0) {
+    lines.push('## Engine Rankings');
+    for (const eng of review.engine_rankings) {
+      lines.push(`- **${eng.engine_name}:** Grade ${eng.overall_grade} — AI-SOV ${eng.ai_sov}%, Sentiment ${eng.net_sentiment >= 0 ? '+' : ''}${eng.net_sentiment}`);
+    }
+    lines.push('');
+  }
+  if (review.competitive_landscape) {
+    lines.push('## Competitive Landscape');
+    lines.push(review.competitive_landscape);
+    lines.push('');
+  }
+  if (review.action_items?.length > 0) {
+    lines.push('## Action Items');
+    for (const item of review.action_items) {
+      lines.push(`### ${item.action_text || 'Action'}`);
+      if (item.rationale) lines.push(item.rationale);
+      lines.push(`**Priority:** ${item.priority}`);
+      if (item.kpi_target) lines.push(`**KPI Target:** ${item.kpi_target}`);
+      if (item.estimated_impact) lines.push(`**Estimated Impact:** ${item.estimated_impact}`);
+      lines.push('');
+    }
+  }
+  return lines.join('\n');
 }
 
 function computeWeightedAvg(
