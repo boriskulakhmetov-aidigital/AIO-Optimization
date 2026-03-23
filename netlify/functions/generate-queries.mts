@@ -54,31 +54,47 @@ export default async (req: Request) => {
     });
 
     const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY! });
-    const result = await ai.models.generateContent({
-      model: 'gemini-3-flash-preview',
-      contents: [{ role: 'user', parts: [{ text: prompt }] }],
-      config: {
-        maxOutputTokens: 4096,
-        temperature: 0.9,  // higher creativity for diverse queries
-        responseMimeType: 'application/json',
-      },
-    });
 
-    const responseText = result.text ?? '';
+    // Retry up to 2 times on parse failures or transient errors
+    let queries: GeneratedQuery[] = [];
+    let lastError = '';
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try {
+        const result = await ai.models.generateContent({
+          model: 'gemini-3-flash-preview',
+          contents: [{ role: 'user', parts: [{ text: prompt }] }],
+          config: {
+            maxOutputTokens: 4096,
+            temperature: 0.9 + attempt * 0.05,  // slightly vary on retry
+            responseMimeType: 'application/json',
+          },
+        });
 
-    // Parse the JSON array of queries
-    let queries: GeneratedQuery[];
-    try {
-      queries = JSON.parse(responseText);
-      if (!Array.isArray(queries)) throw new Error('Response is not an array');
-    } catch {
-      // Try to extract JSON array from the response
-      const match = responseText.match(/\[[\s\S]*\]/);
-      if (match) {
-        queries = JSON.parse(match[0]);
-      } else {
-        return Response.json({ error: 'Failed to parse query generation response' }, { status: 500 });
+        const responseText = result.text ?? '';
+
+        // Parse the JSON array of queries
+        try {
+          queries = JSON.parse(responseText);
+          if (!Array.isArray(queries)) throw new Error('Response is not an array');
+        } catch {
+          // Try to extract JSON array from the response
+          const match = responseText.match(/\[[\s\S]*\]/);
+          if (match) {
+            queries = JSON.parse(match[0]);
+          } else {
+            lastError = 'Failed to parse query generation response';
+            continue; // retry
+          }
+        }
+        break; // success
+      } catch (err: any) {
+        lastError = err.message || String(err);
+        if (attempt < 2) await new Promise(r => setTimeout(r, 2000)); // wait before retry
       }
+    }
+
+    if (queries.length === 0) {
+      return Response.json({ error: lastError || 'Failed to generate queries after 3 attempts' }, { status: 500 });
     }
 
     // Validate and clean queries

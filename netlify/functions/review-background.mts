@@ -71,20 +71,31 @@ export default async (req: Request) => {
 
     const synthesisInput = formatSynthesesForReview(synthesesForReview);
 
-    // Call Gemini for cross-engine review
+    // Call Gemini for cross-engine review (with retry for transient 502s)
     const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY! });
-    const result = await ai.models.generateContent({
-      model: 'gemini-3.1-pro-preview',
-      contents: [{ role: 'user', parts: [{ text: synthesisInput }] }],
-      config: {
-        systemInstruction: systemPrompt,
-        maxOutputTokens: 16384,
-        temperature: 0.3,
-        responseMimeType: 'application/json',
-      },
-    });
-
-    const responseText = result.text ?? '';
+    let responseText = '';
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try {
+        const result = await ai.models.generateContent({
+          model: 'gemini-3.1-pro-preview',
+          contents: [{ role: 'user', parts: [{ text: synthesisInput }] }],
+          config: {
+            systemInstruction: systemPrompt,
+            maxOutputTokens: 16384,
+            temperature: 0.3,
+            responseMimeType: 'application/json',
+          },
+        });
+        responseText = result.text ?? '';
+        break; // success
+      } catch (retryErr: any) {
+        if (attempt < 2 && (retryErr.message?.includes('502') || retryErr.message?.includes('503') || retryErr.message?.includes('temporary'))) {
+          await new Promise(r => setTimeout(r, 3000 * (attempt + 1))); // backoff
+          continue;
+        }
+        throw retryErr; // non-transient error, rethrow
+      }
+    }
 
     // Parse the review JSON
     let review: CrossEngineReview;
