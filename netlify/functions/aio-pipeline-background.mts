@@ -204,6 +204,7 @@ export default async (req: Request) => {
             conceptType: scanConfig.concept_type,
             conceptCategory: scanConfig.concept_category,
             conceptContext: scanConfig.concept_context,
+            userId: userId || null,
           }),
         });
       } catch (err) {

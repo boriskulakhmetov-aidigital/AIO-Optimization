@@ -39,6 +39,7 @@ export default async (req: Request) => {
     conceptType: string;
     conceptCategory: string;
     conceptContext?: string;
+    userId?: string | null;
   };
 
   try {
@@ -47,12 +48,12 @@ export default async (req: Request) => {
     return new Response('Invalid JSON', { status: 400 });
   }
 
-  const { scanId, engineId, engineJobId } = body;
-  console.log(`[scan-engine-background] Starting engine=${engineId} scan=${scanId} job=${engineJobId}`);
+  const { scanId, engineId, engineJobId, userId } = body;
+  console.log(`[scan-engine-background] Starting engine=${engineId} scan=${scanId} job=${engineJobId} user=${userId || 'unknown'}`);
   const engineConfig = getEngine(engineId);
   const rateLimiter = new RateLimiter(engineId);
   const startTime = Date.now();
-  log.info('scan.engine.start', { function_name: 'scan-engine-background', entity_type: 'scan', entity_id: engineJobId, correlation_id: scanId, meta: { engine_id: engineId } });
+  log.info('scan.engine.start', { function_name: 'scan-engine-background', entity_type: 'scan', entity_id: engineJobId, correlation_id: scanId, user_id: userId || undefined, meta: { engine_id: engineId } });
 
   try {
     // Mark engine as querying
