@@ -100,17 +100,41 @@ export default async (req: Request) => {
     updated_at: new Date().toISOString(),
   });
 
-  // Fire-and-forget: kick off the pipeline in a background function
-  // This avoids the 26s Netlify timeout — generate-queries + dispatch-scan
-  // can take 15-25s combined, which is too close to the limit.
+  // Kick off the pipeline background function.
+  // Background functions return 202 immediately, so this should be fast.
+  // Await + retry to avoid silent failures from cold starts or transient errors.
   const siteUrl = process.env.URL || new URL(req.url).origin;
   const apiKey = req.headers.get('X-API-Key') || '';
+  const pipelineBody = JSON.stringify({ scanId, scanConfig, selectedEngines, queryCount: clampedQueryCount, userId: auth.userId, userEmail: auth.email });
 
-  fetch(`${siteUrl}/.netlify/functions/aio-pipeline-background`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'X-API-Key': apiKey },
-    body: JSON.stringify({ scanId, scanConfig, selectedEngines, queryCount: clampedQueryCount, userId: auth.userId, userEmail: auth.email }),
-  }).catch(() => {}); // fire-and-forget
+  let pipelineOk = false;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      const pipelineRes = await fetch(`${siteUrl}/.netlify/functions/aio-pipeline-background`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-API-Key': apiKey },
+        body: pipelineBody,
+      });
+      console.log(`[api-submit] Pipeline trigger attempt ${attempt}: ${pipelineRes.status}`);
+      if (pipelineRes.status === 202 || pipelineRes.ok) {
+        pipelineOk = true;
+        break;
+      }
+    } catch (err) {
+      console.warn(`[api-submit] Pipeline trigger attempt ${attempt} failed:`, err);
+      if (attempt < 2) await new Promise(r => setTimeout(r, 1000));
+    }
+  }
+
+  if (!pipelineOk) {
+    // Pipeline didn't fire — mark job as error so it doesn't sit as pending forever
+    await supabase.from('job_status').update({
+      status: 'error',
+      error: 'Failed to start scan pipeline. Please retry.',
+      updated_at: new Date().toISOString(),
+    }).eq('id', jobId);
+    console.error(`[api-submit] Pipeline failed to start for scan ${scanId}`);
+  }
 
   // Log the API request
   await logApiRequest(supabase as any, {
