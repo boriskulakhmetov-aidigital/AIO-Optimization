@@ -232,13 +232,102 @@ export default async (req: Request) => {
       meta: { query_count: queries.length, engines: availableEngines, total_api_calls: queries.length * availableEngines.length },
     });
 
-    // Scan is now running — engine workers update progress via scan_engines table (Realtime)
-    // The review-background function sets job_status to 'complete' when all engines finish
     await supabase.from('job_status').update({
       status: 'streaming',
       meta: { scan_id: scanId, phase: 'scanning', query_count: queries.length, engines: availableEngines },
       updated_at: new Date().toISOString(),
     }).eq('id', scanId);
+
+    // ── Step 3: Wait for all engines to complete, then trigger synthesis + review ──
+    // Don't rely on engine workers to trigger synthesis (function-to-function is unreliable).
+    // The pipeline has 15 min — poll scan_engines until all are done, then trigger next steps.
+    const WAIT_TIMEOUT = 600_000; // 10 min max wait for scanning
+    const waitStart = Date.now();
+    while (Date.now() - waitStart < WAIT_TIMEOUT) {
+      await new Promise(r => setTimeout(r, 5000));
+      const { data: engines } = await supabase
+        .from('scan_engines')
+        .select('engine_id, status')
+        .eq('scan_id', scanId);
+      if (!engines) continue;
+      const allDone = engines.every(e => e.status === 'complete' || e.status === 'error');
+      if (allDone) break;
+    }
+
+    // 3a. Trigger synthesis for each engine
+    await supabase.from('job_status').update({
+      status: 'streaming',
+      meta: { scan_id: scanId, phase: 'synthesizing' },
+      updated_at: new Date().toISOString(),
+    }).eq('id', scanId);
+    await updateScanStatus(scanId, 'synthesizing');
+
+    const synthPromises = availableEngines.map(async (engineId) => {
+      const engineJobId = engineJobIds[engineId];
+      for (let attempt = 0; attempt < 3; attempt++) {
+        try {
+          const resp = await fetch(`${siteUrl}/.netlify/functions/synthesize-engine-background`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ scanId, engineJobId, userId }),
+          });
+          console.log(`[pipeline] Synthesis trigger ${engineId} attempt ${attempt}: ${resp.status}`);
+          if (resp.status === 202 || resp.ok) return;
+        } catch (err) {
+          console.warn(`[pipeline] Synthesis trigger ${engineId} attempt ${attempt} failed:`, err);
+          if (attempt < 2) await new Promise(r => setTimeout(r, 2000));
+        }
+      }
+    });
+    await Promise.all(synthPromises);
+
+    // 3b. Wait for all syntheses to complete
+    const synthStart = Date.now();
+    while (Date.now() - synthStart < WAIT_TIMEOUT) {
+      await new Promise(r => setTimeout(r, 5000));
+      const { data: engines } = await supabase
+        .from('scan_engines')
+        .select('engine_id, status, synthesis_data')
+        .eq('scan_id', scanId);
+      if (!engines) continue;
+      const allSynthesized = engines.every(e =>
+        e.synthesis_data != null || e.status === 'error'
+      );
+      if (allSynthesized) break;
+    }
+
+    // 3c. Trigger review
+    await supabase.from('job_status').update({
+      status: 'streaming',
+      meta: { scan_id: scanId, phase: 'reviewing' },
+      updated_at: new Date().toISOString(),
+    }).eq('id', scanId);
+    await updateScanStatus(scanId, 'reviewing');
+
+    const reviewId = `${scanId}_review`;
+    await supabase.from('scan_review').upsert({ id: reviewId, scan_id: scanId, status: 'pending' });
+
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try {
+        const resp = await fetch(`${siteUrl}/.netlify/functions/review-background`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ scanId, userId }),
+        });
+        console.log(`[pipeline] Review trigger attempt ${attempt}: ${resp.status}`);
+        if (resp.status === 202 || resp.ok) break;
+      } catch (err) {
+        console.warn(`[pipeline] Review trigger attempt ${attempt} failed:`, err);
+        if (attempt < 2) await new Promise(r => setTimeout(r, 2000));
+      }
+    }
+
+    log.info('aio-pipeline.review_triggered', {
+      function_name: 'aio-pipeline-background',
+      user_id: userId,
+      entity_type: 'scan',
+      entity_id: scanId,
+    });
 
   } catch (err) {
     log.error('aio-pipeline.error', {
