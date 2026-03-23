@@ -66,14 +66,12 @@ export default async (req: Request) => {
     let completed = 0;
     let failed = 0;
 
-    // Process queries in batches with controlled concurrency
+    // Fire ALL queries in parallel — providers handle their own rate limits,
+    // our retry logic handles 429s with exponential backoff.
     await runInBatches(
       queries,
       engineConfig.maxConcurrency,
       async (query) => {
-        // Wait for rate limit slot
-        await rateLimiter.waitForSlot();
-
         // Execute with retry
         const outcome = await withRetry(async () => {
           const response = await queryEngine(engineId, query.query_text);

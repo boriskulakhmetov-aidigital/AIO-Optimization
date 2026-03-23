@@ -93,32 +93,24 @@ function isNonRetryable(error: string): boolean {
 }
 
 /**
- * Run queries in controlled parallel batches.
- * Returns results in the same order as inputs.
+ * Run all items in parallel. No batching — fire everything at once.
+ * batchSize param kept for API compat but ignored.
+ * Retries handle 429s from providers.
  */
 export async function runInBatches<T, R>(
   items: T[],
-  batchSize: number,
+  _batchSize: number,
   fn: (item: T, index: number) => Promise<R>,
 ): Promise<R[]> {
   const results: R[] = new Array(items.length);
 
-  for (let i = 0; i < items.length; i += batchSize) {
-    const batch = items.slice(i, i + batchSize);
-    const batchResults = await Promise.allSettled(
-      batch.map((item, batchIdx) => fn(item, i + batchIdx))
-    );
+  const settled = await Promise.allSettled(
+    items.map((item, idx) => fn(item, idx))
+  );
 
-    for (let j = 0; j < batchResults.length; j++) {
-      const r = batchResults[j];
-      if (r.status === 'fulfilled') {
-        results[i + j] = r.value;
-      } else {
-        // For rejected promises, the caller's fn should handle errors internally
-        // This is a safety net
-        results[i + j] = undefined as unknown as R;
-      }
-    }
+  for (let i = 0; i < settled.length; i++) {
+    const r = settled[i];
+    results[i] = r.status === 'fulfilled' ? r.value : (undefined as unknown as R);
   }
 
   return results;
