@@ -6,6 +6,9 @@
  * 2. Dispatch scan with pre-generated queries
  *
  * Runs as a Netlify Background Function (15-min timeout).
+ *
+ * Access control: validated at API key level in api-submit.mts
+ * No enforceAccess needed — this function is only called internally
  */
 import { createClient } from '@supabase/supabase-js';
 
@@ -101,5 +104,3 @@ export default async (req: Request) => {
     }).eq('id', scanId);
   }
 };
-
-export const config = { path: '/aio-pipeline-background' };

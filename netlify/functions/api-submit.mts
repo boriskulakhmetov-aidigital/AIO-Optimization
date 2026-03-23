@@ -107,8 +107,7 @@ export default async (req: Request) => {
   const siteUrl = process.env.URL || new URL(req.url).origin;
   const apiKey = req.headers.get('X-API-Key') || '';
 
-  // Note: aio-pipeline-background uses custom path config, NOT /.netlify/functions/
-  fetch(`${siteUrl}/aio-pipeline-background`, {
+  fetch(`${siteUrl}/.netlify/functions/aio-pipeline-background`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'X-API-Key': apiKey },
     body: JSON.stringify({ scanId, scanConfig, selectedEngines, queryCount: clampedQueryCount }),
