@@ -129,19 +129,24 @@ export default async (req: Request) => {
       `Engine ${engineId} complete: ${completed - failed}/${totalQueries} ok, ${failed} failed`
     );
 
-    // Trigger synthesis for this engine — MUST await so the request is sent
+    // Trigger synthesis for this engine with retry
     const baseUrl = new URL(req.url);
     const origin = `${baseUrl.protocol}//${baseUrl.host}`;
+    const synthBody = JSON.stringify({ scanId, engineJobId, userId: body.userId });
 
-    try {
-      const synthResp = await fetch(`${origin}/.netlify/functions/synthesize-engine-background`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ scanId, engineJobId, userId: body.userId }),
-      });
-      console.log(`[scan-engine-background] Synthesis trigger for ${engineId}: ${synthResp.status}`);
-    } catch (err) {
-      console.warn(`Failed to trigger synthesis for ${engineId}:`, err);
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try {
+        const synthResp = await fetch(`${origin}/.netlify/functions/synthesize-engine-background`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: synthBody,
+        });
+        console.log(`[scan-engine-background] Synthesis trigger for ${engineId} attempt ${attempt}: ${synthResp.status}`);
+        if (synthResp.status === 202 || synthResp.ok) break;
+      } catch (err) {
+        console.warn(`[scan-engine-background] Synthesis trigger for ${engineId} attempt ${attempt} failed:`, err);
+        if (attempt < 2) await new Promise(r => setTimeout(r, 1000));
+      }
     }
 
     // Check if all engines are done to update scan status

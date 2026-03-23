@@ -84,7 +84,7 @@ export default async (req: Request) => {
 
     const queryData = formatQueriesForSynthesis(completedQueries);
 
-    // Call Gemini to synthesize
+    // Call Gemini to synthesize — Flash is fast enough for structured JSON extraction
     const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY! });
     const result = await ai.models.generateContent({
       model: 'gemini-3.1-pro-preview',
@@ -190,18 +190,35 @@ async function checkAndTriggerReview(scanId: string, req: Request) {
   const reviewId = `${scanId}_review`;
   await createScanReview(reviewId, scanId);
 
-  // Trigger review background function — MUST await so the request is sent
+  // Trigger review background function with retry
   const baseUrl = new URL(req.url);
   const origin = `${baseUrl.protocol}//${baseUrl.host}`;
+  const reviewBody = JSON.stringify({ scanId, userId });
 
-  try {
-    const reviewResp = await fetch(`${origin}/.netlify/functions/review-background`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ scanId, userId: userId || scan?.user_id }),
+  let reviewTriggered = false;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      const reviewResp = await fetch(`${origin}/.netlify/functions/review-background`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: reviewBody,
+      });
+      console.log(`[synthesize] Review trigger attempt ${attempt}: ${reviewResp.status}`);
+      if (reviewResp.status === 202 || reviewResp.ok) {
+        reviewTriggered = true;
+        break;
+      }
+    } catch (err) {
+      console.warn(`[synthesize] Review trigger attempt ${attempt} failed:`, err);
+      if (attempt < 2) await new Promise(r => setTimeout(r, 1000));
+    }
+  }
+
+  if (!reviewTriggered) {
+    console.error(`[synthesize] Review failed to trigger for scan ${scanId}`);
+    await writeJobStatus(scanId, {
+      status: 'error',
+      error: 'Failed to start cross-engine review. Please retry the scan.',
     });
-    console.log(`[synthesize] Review trigger response: ${reviewResp.status}`);
-  } catch (err) {
-    console.warn('Failed to trigger review:', err);
   }
 }
