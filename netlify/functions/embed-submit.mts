@@ -109,6 +109,10 @@ export default async (req: Request) => {
     return Response.json({ error: 'Failed to enqueue task' }, { status: 500 });
   }
 
+  // Immediately notify task-worker (fire-and-forget — poller is backup)
+  const siteUrl = process.env.URL || 'https://aio-optimization.apps.aidigitallabs.com';
+  fetch(`${siteUrl}/.netlify/functions/task-worker`, { method: 'POST' }).catch(() => {});
+
   console.log(`[embed-submit] Task enqueued: generate_queries for scan ${scanId}`);
 
   return Response.json({ job_id: scanId, scan_id: scanId, status: 'pending' }, { status: 202 });

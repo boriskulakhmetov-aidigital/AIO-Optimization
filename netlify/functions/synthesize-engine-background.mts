@@ -224,4 +224,8 @@ async function checkAndTriggerReview(scanId: string, userId?: string, userEmail?
     task_type: 'review',
     payload: { userId: userId || null, userEmail: userEmail || null, scanConfig: {} },
   });
+
+  // Immediately notify task-worker (fire-and-forget — poller is backup)
+  const siteUrl = process.env.URL || 'https://aio-optimization.apps.aidigitallabs.com';
+  fetch(`${siteUrl}/.netlify/functions/task-worker`, { method: 'POST' }).catch(() => {});
 }

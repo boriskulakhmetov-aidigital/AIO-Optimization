@@ -129,6 +129,9 @@ export default async (req: Request) => {
     }).eq('id', jobId);
   } else {
     console.log(`[api-submit] Task enqueued: generate_queries for scan ${scanId}`);
+    // Immediately notify task-worker (fire-and-forget — poller is backup)
+    const siteUrl = process.env.URL || 'https://aio-optimization.apps.aidigitallabs.com';
+    fetch(`${siteUrl}/.netlify/functions/task-worker`, { method: 'POST' }).catch(() => {});
   }
 
   // Log the API request
