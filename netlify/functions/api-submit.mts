@@ -108,6 +108,7 @@ export default async (req: Request) => {
   // No function-to-function calls, no background functions, no streaming hacks
   const { error: taskError } = await supabase.from('pipeline_tasks').insert({
     scan_id: scanId,
+    app: 'aio-optimization',
     task_type: 'generate_queries',
     payload: {
       scanId,

@@ -191,6 +191,7 @@ async function handleGenerateQueries(supabase: any, scanId: string, payload: any
 
   // Enqueue next task: dispatch engines
   await supabase.from('pipeline_tasks').insert({
+    app: 'aio-optimization',
     scan_id: scanId,
     task_type: 'dispatch_engines',
     payload: { ...payload, queries },
@@ -266,6 +267,7 @@ async function handleDispatchEngines(supabase: any, scanId: string, payload: any
   // Enqueue a "wait_for_engines" check — the worker will poll until engines complete
   // then enqueue synthesis tasks
   await supabase.from('pipeline_tasks').insert({
+    app: 'aio-optimization',
     scan_id: scanId,
     task_type: 'check_engines_done',
     payload: { availableEngines, engineJobIds, userId, scanConfig },
@@ -291,6 +293,7 @@ async function handleCheckEnginesDone(supabase: any, scanId: string, payload: an
     // Not done yet — re-enqueue this check (will run again in ~5s)
     // Mark current task as complete so a new pending one is created
     await supabase.from('pipeline_tasks').insert({
+    app: 'aio-optimization',
       scan_id: scanId,
       task_type: 'check_engines_done',
       payload,
@@ -305,6 +308,7 @@ async function handleCheckEnginesDone(supabase: any, scanId: string, payload: an
   const { availableEngines, engineJobIds, userId, scanConfig } = payload;
   for (const engineId of availableEngines) {
     await supabase.from('pipeline_tasks').insert({
+    app: 'aio-optimization',
       scan_id: scanId,
       task_type: 'synthesize_engine',
       payload: { engineId, engineJobId: engineJobIds[engineId], userId, scanConfig },
@@ -313,6 +317,7 @@ async function handleCheckEnginesDone(supabase: any, scanId: string, payload: an
 
   // Also enqueue a check for when all syntheses are done
   await supabase.from('pipeline_tasks').insert({
+    app: 'aio-optimization',
     scan_id: scanId,
     task_type: 'check_synthesis_done',
     payload: { userId, scanConfig },
@@ -332,6 +337,7 @@ async function handleCheckSynthesisDone(supabase: any, scanId: string, payload: 
   if (!allSynthesized) {
     // Not done yet — re-enqueue
     await supabase.from('pipeline_tasks').insert({
+    app: 'aio-optimization',
       scan_id: scanId,
       task_type: 'check_synthesis_done',
       payload,
@@ -341,6 +347,7 @@ async function handleCheckSynthesisDone(supabase: any, scanId: string, payload: 
 
   // All synthesized — enqueue review
   await supabase.from('pipeline_tasks').insert({
+    app: 'aio-optimization',
     scan_id: scanId,
     task_type: 'review',
     payload,
