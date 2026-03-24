@@ -24,7 +24,8 @@ import {
 } from './_shared/supabase.js';
 import { getEngine, getEngineName } from './_shared/engineRegistry.js';
 import { log } from './_shared/logger.js';
-import { extractGeminiTokens, repairJson } from '@boriskulakhmetov-aidigital/design-system/utils';
+import { extractGeminiTokens } from '@boriskulakhmetov-aidigital/design-system/utils';
+import { repairJson } from './_shared/repairJson.js';
 import { trackTokens } from './_shared/access.js';
 import type { GeneratedQuery, EngineId, EngineSynthesis } from './_shared/types.js';
 

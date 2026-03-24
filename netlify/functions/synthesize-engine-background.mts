@@ -11,7 +11,8 @@ import { buildSynthesizerPrompt, formatQueriesForSynthesis } from './_shared/syn
 import type { EngineId, EngineSynthesis } from './_shared/types.js';
 import { log } from './_shared/logger.js';
 import { trackTokens } from './_shared/access.js';
-import { extractGeminiTokens, repairJson } from '@boriskulakhmetov-aidigital/design-system/utils';
+import { extractGeminiTokens } from '@boriskulakhmetov-aidigital/design-system/utils';
+import { repairJson } from './_shared/repairJson.js';
 
 /**
  * POST /synthesize-engine-background  (background function)

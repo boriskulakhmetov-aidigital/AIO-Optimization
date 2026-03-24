@@ -5,7 +5,8 @@ import {
   getQueriesForScan, writeJobStatus, supabase,
 } from './_shared/supabase.js';
 import { trackUsage, trackTokens } from './_shared/access.js';
-import { extractGeminiTokens, repairJson } from '@boriskulakhmetov-aidigital/design-system/utils';
+import { extractGeminiTokens } from '@boriskulakhmetov-aidigital/design-system/utils';
+import { repairJson } from './_shared/repairJson.js';
 import { getEngineName } from './_shared/engineRegistry.js';
 import { buildReviewerPrompt, formatSynthesesForReview } from './_shared/reviewerPrompt.js';
 import type {
