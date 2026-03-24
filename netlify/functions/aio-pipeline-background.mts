@@ -1,25 +1,32 @@
 /**
  * Background function: AIO scan pipeline
  *
- * Handles the full flow:
- * 1. Generate queries via Gemini (INLINE — not a function call, avoids 26s timeout)
- * 2. Dispatch scan with pre-generated queries
+ * Orchestrates the ENTIRE scan lifecycle inline (15-min timeout):
+ * 1. Generate queries via Gemini
+ * 2. Dispatch scan + fire engine workers
+ * 3. Poll until all engines complete
+ * 4. Run synthesis for each engine (inline Gemini call)
+ * 5. Trigger review
  *
- * Runs as a Netlify Background Function (15-min timeout).
- *
- * Access control: validated at API key level in api-submit.mts
- * No enforceAccess needed — this function is only called internally
+ * No inter-function triggers for synthesis — Netlify background functions
+ * spawned from other background functions are unreliable (202 accepted but
+ * silently dropped). Only engine scan workers + review are external.
  */
 import { GoogleGenAI } from '@google/genai';
 import { createClient } from '@supabase/supabase-js';
 import { buildQueryGeneratorPrompt } from './_shared/queryGeneratorPrompt.js';
+import { buildSynthesizerPrompt, formatQueriesForSynthesis } from './_shared/synthesizerPrompt.js';
 import {
   createScan, updateScanStatus, createScanEngine,
   bulkInsertQueries, incrementUserScanCount, writeJobStatus,
+  getScanEngine, getScanById, getQueriesForEngine,
+  updateQueryResult, saveScanEngineSynthesis, updateScanEngineStatus,
 } from './_shared/supabase.js';
-import { getEngine } from './_shared/engineRegistry.js';
+import { getEngine, getEngineName } from './_shared/engineRegistry.js';
 import { log } from './_shared/logger.js';
-import type { GeneratedQuery, EngineId } from './_shared/types.js';
+import { extractGeminiTokens, repairJson } from '@boriskulakhmetov-aidigital/design-system/utils';
+import { trackTokens } from './_shared/access.js';
+import type { GeneratedQuery, EngineId, EngineSynthesis } from './_shared/types.js';
 
 const APP_NAME = 'aio-optimization';
 
@@ -254,7 +261,7 @@ export default async (req: Request) => {
       if (allDone) break;
     }
 
-    // 3a. Trigger synthesis for each engine
+    // 3a. Run synthesis INLINE for each engine (parallel Gemini calls)
     await supabase.from('job_status').update({
       status: 'streaming',
       meta: { scan_id: scanId, phase: 'synthesizing' },
@@ -262,39 +269,84 @@ export default async (req: Request) => {
     }).eq('id', scanId);
     await updateScanStatus(scanId, 'synthesizing');
 
-    const synthPromises = availableEngines.map(async (engineId) => {
-      const engineJobId = engineJobIds[engineId];
-      for (let attempt = 0; attempt < 3; attempt++) {
-        try {
-          const resp = await fetch(`${siteUrl}/.netlify/functions/synthesize-engine-background`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ scanId, engineJobId, userId }),
-          });
-          console.log(`[pipeline] Synthesis trigger ${engineId} attempt ${attempt}: ${resp.status}`);
-          if (resp.status === 202 || resp.ok) return;
-        } catch (err) {
-          console.warn(`[pipeline] Synthesis trigger ${engineId} attempt ${attempt} failed:`, err);
-          if (attempt < 2) await new Promise(r => setTimeout(r, 2000));
-        }
-      }
-    });
-    await Promise.all(synthPromises);
+    const gemini = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY! });
+    const scan = await getScanById(scanId);
 
-    // 3b. Wait for all syntheses to complete
-    const synthStart = Date.now();
-    while (Date.now() - synthStart < WAIT_TIMEOUT) {
-      await new Promise(r => setTimeout(r, 5000));
-      const { data: engines } = await supabase
-        .from('scan_engines')
-        .select('engine_id, status, synthesis_data')
-        .eq('scan_id', scanId);
-      if (!engines) continue;
-      const allSynthesized = engines.every(e =>
-        e.synthesis_data != null || e.status === 'error'
-      );
-      if (allSynthesized) break;
-    }
+    await Promise.all(availableEngines.map(async (engineId) => {
+      const engineJobId = engineJobIds[engineId];
+      try {
+        const engineName = getEngineName(engineId);
+        await updateScanEngineStatus(engineJobId, 'synthesizing');
+        await writeJobStatus(scanId, { status: 'streaming', meta: { phase: 'synthesizing', engine_id: engineId } });
+
+        const engineQueries = await getQueriesForEngine(engineJobId);
+        const completedQueries = engineQueries.filter(q => q.status === 'complete' || q.status === 'error');
+
+        if (completedQueries.length === 0) {
+          console.warn(`[pipeline] No completed queries for ${engineId}, skipping synthesis`);
+          await updateScanEngineStatus(engineJobId, 'complete');
+          return;
+        }
+
+        const systemPrompt = buildSynthesizerPrompt({
+          engineName,
+          conceptName: scan?.concept_name || scanConfig.concept_name,
+          conceptType: scan?.concept_type || scanConfig.concept_type,
+          conceptCategory: scan?.concept_category || scanConfig.concept_category || '',
+          queriesCount: completedQueries.length,
+        });
+
+        const queryData = formatQueriesForSynthesis(completedQueries);
+        const synthResult = await gemini.models.generateContent({
+          model: 'gemini-3.1-pro-preview',
+          contents: [{ role: 'user', parts: [{ text: queryData }] }],
+          config: { systemInstruction: systemPrompt, maxOutputTokens: 16384, temperature: 0.3, responseMimeType: 'application/json' },
+        });
+
+        const responseText = synthResult.text ?? '';
+        const synthTokens = extractGeminiTokens(synthResult);
+        if (userId) trackTokens(userId, 'aio-optimization', 'gemini', 'gemini-3.1-pro-preview', synthTokens.inputTokens, synthTokens.outputTokens, synthTokens.totalTokens).catch(() => {});
+
+        // Parse with repairJson fallback
+        let synthesis: EngineSynthesis & { per_query_scores?: any[] };
+        try {
+          synthesis = JSON.parse(responseText);
+        } catch {
+          try { synthesis = JSON.parse(repairJson(responseText)); } catch {
+            const match = responseText.match(/\{[\s\S]*\}/);
+            if (match) { synthesis = JSON.parse(repairJson(match[0])); }
+            else throw new Error('Failed to parse synthesis JSON');
+          }
+        }
+
+        synthesis.engine_id = engineId;
+        synthesis.engine_name = engineName;
+        synthesis.queries_total = engineQueries.length;
+        synthesis.queries_completed = completedQueries.filter(q => q.status === 'complete').length;
+        synthesis.queries_failed = completedQueries.filter(q => q.status === 'error').length;
+
+        // Update per-query scores
+        if (synthesis.per_query_scores?.length) {
+          for (const score of synthesis.per_query_scores) {
+            await updateQueryResult(score.query_id, {
+              status: 'complete', mentioned: score.mentioned, mentionPosition: score.mention_position,
+              sentiment: score.sentiment, sentimentScore: score.sentiment_score,
+              recommendationStrength: score.recommendation_strength, contextType: score.context_type,
+            }).catch(() => {});
+          }
+        }
+
+        const { per_query_scores: _, ...synthesisData } = synthesis;
+        await saveScanEngineSynthesis(engineJobId, synthesisData as EngineSynthesis);
+
+        log.info('synthesis.complete', { function_name: 'aio-pipeline-background', user_id: userId, entity_type: 'scan', entity_id: engineJobId, correlation_id: scanId, meta: { engine_id: engineId, ai_sov: synthesis.ai_sov } });
+        console.log(`[pipeline] Synthesis complete for ${engineName}: AI-SOV=${synthesis.ai_sov}%`);
+      } catch (err) {
+        console.error(`[pipeline] Synthesis failed for ${engineId}:`, err);
+        log.error('synthesis.error', { function_name: 'aio-pipeline-background', user_id: userId, entity_type: 'scan', entity_id: engineJobId, correlation_id: scanId, message: err instanceof Error ? err.message : String(err), meta: { engine_id: engineId } });
+        await updateScanEngineStatus(engineJobId, 'error', `Synthesis failed: ${err}`);
+      }
+    }));
 
     // 3c. Trigger review
     await supabase.from('job_status').update({
