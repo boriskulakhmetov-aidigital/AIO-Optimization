@@ -132,15 +132,29 @@ export default async (req: Request) => {
     );
 
     // Event-driven: when last engine completes, create synthesis tasks via pipeline_tasks
+    // ATOMIC: only the first engine to flip scanning→synthesizing wins (prevents duplicate tasks)
     const allEngines = await getScanEngines(scanId);
     const allDone = allEngines.every(e => e.status === 'complete' || e.status === 'error');
     if (allDone) {
+      const supabase = createClient(process.env.SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!);
+
+      // Atomic claim: UPDATE only if status is still 'scanning'
+      const { data: claimed } = await supabase
+        .from('scans')
+        .update({ status: 'synthesizing' })
+        .eq('id', scanId)
+        .eq('status', 'scanning')
+        .select('id');
+
+      if (!claimed?.length) {
+        console.log(`Scan ${scanId} already moved past scanning — skipping synthesis task creation`);
+        return new Response('Accepted', { status: 202 });
+      }
+
       console.log(`All engines complete for scan ${scanId} — creating synthesis tasks`);
-      await updateScanStatus(scanId, 'synthesizing');
       await writeJobStatus(scanId, { status: 'streaming', meta: { scan_id: scanId, phase: 'synthesizing' } });
 
       // Create synthesize_engine tasks for each engine
-      const supabase = createClient(process.env.SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!);
       for (const eng of allEngines) {
         if (eng.status === 'error') continue; // skip errored engines
         await supabase.from('pipeline_tasks').insert({

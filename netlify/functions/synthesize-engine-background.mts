@@ -86,57 +86,63 @@ export default async (req: Request) => {
 
     const queryData = formatQueriesForSynthesis(completedQueries);
 
-    // Call Gemini to synthesize — Flash is fast enough for structured JSON extraction
+    // Call Gemini to synthesize with retry (transient 502/503 + JSON parse failures)
     const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY! });
-    const result = await ai.models.generateContent({
-      model: 'gemini-3.1-pro-preview',
-      contents: [{ role: 'user', parts: [{ text: queryData }] }],
-      config: {
-        systemInstruction: systemPrompt,
-        maxOutputTokens: 16384,
-        temperature: 0.3,
-        responseMimeType: 'application/json',
-      },
-    });
 
-    const responseText = result.text ?? '';
-
-    // Track token usage
-    const synthTokens = extractGeminiTokens(result);
-    if (scan.user_id) {
-      trackTokens(scan.user_id, 'aio-optimization', 'gemini', 'gemini-3.1-pro-preview', synthTokens.inputTokens, synthTokens.outputTokens, synthTokens.totalTokens);
-    }
-
-    // Parse the synthesis JSON
-    let synthesis: EngineSynthesis & { per_query_scores?: Array<{
-      query_id: string;
-      mentioned: boolean;
-      mention_position: number | null;
-      sentiment: string;
-      sentiment_score: number;
-      recommendation_strength: string;
-      context_type: string;
+    type SynthesisResult = EngineSynthesis & { per_query_scores?: Array<{
+      query_id: string; mentioned: boolean; mention_position: number | null;
+      sentiment: string; sentiment_score: number;
+      recommendation_strength: string; context_type: string;
     }> };
 
-    try {
-      synthesis = JSON.parse(responseText);
-    } catch {
-      // Gemini Pro sometimes produces malformed JSON (trailing commas, truncation)
-      // Try repairJson before giving up
+    let synthesis: SynthesisResult = undefined as any;
+    let lastResult: any = null;
+
+    for (let attempt = 0; attempt < 3; attempt++) {
       try {
-        synthesis = JSON.parse(repairJson(responseText));
-      } catch {
-        const match = responseText.match(/\{[\s\S]*\}/);
-        if (match) {
+        const result = await ai.models.generateContent({
+          model: 'gemini-3.1-pro-preview',
+          contents: [{ role: 'user', parts: [{ text: queryData }] }],
+          config: {
+            systemInstruction: systemPrompt,
+            maxOutputTokens: 16384,
+            temperature: 0.3 + attempt * 0.05,
+            responseMimeType: 'application/json',
+          },
+        });
+        lastResult = result;
+        const responseText = result.text ?? '';
+
+        // Parse with repairJson fallback
+        try {
+          synthesis = JSON.parse(responseText);
+        } catch {
           try {
-            synthesis = JSON.parse(repairJson(match[0]));
+            synthesis = JSON.parse(repairJson(responseText));
           } catch {
-            throw new Error('Failed to parse synthesis response as JSON');
+            const match = responseText.match(/\{[\s\S]*\}/);
+            if (match) {
+              synthesis = JSON.parse(repairJson(match[0]));
+            } else {
+              throw new Error('Failed to parse synthesis response as JSON');
+            }
           }
-        } else {
-          throw new Error('Failed to parse synthesis response as JSON');
         }
+        break; // success
+      } catch (retryErr: any) {
+        console.warn(`Synthesis attempt ${attempt + 1}/3 failed for ${engineId}:`, retryErr.message);
+        if (attempt < 2) {
+          await new Promise(r => setTimeout(r, 3000 * (attempt + 1)));
+          continue;
+        }
+        throw retryErr; // final attempt — rethrow
       }
+    }
+
+    // Track token usage
+    const synthTokens = extractGeminiTokens(lastResult ?? {});
+    if (scan.user_id) {
+      trackTokens(scan.user_id, 'aio-optimization', 'gemini', 'gemini-3.1-pro-preview', synthTokens.inputTokens, synthTokens.outputTokens, synthTokens.totalTokens);
     }
 
     // Ensure required fields
@@ -190,17 +196,28 @@ async function checkAndTriggerReview(scanId: string, userId?: string, userEmail?
   const allSynthesized = await areAllEnginesSynthesized(scanId);
   if (!allSynthesized) return;
 
-  console.log(`All engines synthesized for scan ${scanId} — creating review task`);
+  // ATOMIC: only the first synthesis to flip synthesizing→reviewing wins (prevents duplicate review tasks)
+  const { createClient } = await import('@supabase/supabase-js');
+  const supabase = createClient(process.env.SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!);
 
-  await updateScanStatus(scanId, 'reviewing');
+  const { data: claimed } = await supabase
+    .from('scans')
+    .update({ status: 'reviewing' })
+    .eq('id', scanId)
+    .eq('status', 'synthesizing')
+    .select('id');
+
+  if (!claimed?.length) {
+    console.log(`Scan ${scanId} already moved past synthesizing — skipping review task creation`);
+    return;
+  }
+
+  console.log(`All engines synthesized for scan ${scanId} — creating review task`);
   await writeJobStatus(scanId, { status: 'streaming', meta: { phase: 'reviewing' } });
 
   const reviewId = `${scanId}_review`;
   await createScanReview(reviewId, scanId);
 
-  // Event-driven: create review task via pipeline_tasks → webhook fires instantly
-  const { createClient } = await import('@supabase/supabase-js');
-  const supabase = createClient(process.env.SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!);
   await supabase.from('pipeline_tasks').insert({
     app: 'aio-optimization',
     scan_id: scanId,

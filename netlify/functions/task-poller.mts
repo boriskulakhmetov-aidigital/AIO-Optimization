@@ -1,13 +1,10 @@
 /**
  * Scheduled function: claims and executes pipeline tasks.
  *
- * Runs every 5 minutes via Netlify cron. Each invocation:
- * 1. Claims pending tasks from pipeline_tasks
- * 2. Calls task-worker to execute them
- * 3. Loops for up to 55s to process multiple tasks
- *
+ * Runs every minute via Netlify cron. Each invocation loops for 55s,
+ * claiming and executing tasks with 2s gaps between tasks.
  * This is the ONLY entry point for pipeline task execution.
- * No background functions, no fetch triggers.
+ * No webhook triggers, no function-to-function calls.
  */
 
 export default async (req: Request) => {
@@ -17,7 +14,6 @@ export default async (req: Request) => {
 
   while (Date.now() < deadline) {
     try {
-      // Call task-worker — it handles claim + execute
       const res = await fetch(`${siteUrl}/.netlify/functions/task-worker`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -28,7 +24,6 @@ export default async (req: Request) => {
       let result: Record<string, unknown>;
 
       if (contentType.includes('text/event-stream')) {
-        // Streaming response — read until done, extract final status
         const text = await res.text();
         const isDone = text.includes('done ');
         const isError = text.includes('error ');
@@ -38,17 +33,17 @@ export default async (req: Request) => {
       }
 
       if (result.status === 'idle') {
-        // No tasks — wait 10s before checking again
-        await new Promise(r => setTimeout(r, 10_000));
+        // No tasks — wait 5s then check again
+        await new Promise(r => setTimeout(r, 5_000));
       } else {
         processed++;
         console.log(`[task-poller] Processed: ${result.taskType} (${result.status})`);
-        // Pause between tasks — 5s to prevent hammering DB
-        await new Promise(r => setTimeout(r, 5_000));
+        // 2s pause between tasks (safe — no webhook trigger)
+        await new Promise(r => setTimeout(r, 2_000));
       }
     } catch (err) {
       console.warn('[task-poller] Worker call failed:', err);
-      await new Promise(r => setTimeout(r, 10_000));
+      await new Promise(r => setTimeout(r, 5_000));
     }
   }
 
@@ -56,5 +51,5 @@ export default async (req: Request) => {
 };
 
 export const config = {
-  schedule: '* * * * *',  // Every minute — safe with 5s/10s delays in the loop
+  schedule: '* * * * *',  // Every minute — loops for 55s with 2s inter-task gaps
 };
