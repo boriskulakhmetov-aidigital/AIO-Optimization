@@ -19,15 +19,17 @@ import { buildSynthesizerPrompt, formatQueriesForSynthesis } from './_shared/syn
 import {
   createScan, updateScanStatus, createScanEngine,
   bulkInsertQueries, incrementUserScanCount, writeJobStatus,
-  getScanEngine, getScanById, getQueriesForEngine,
-  updateQueryResult, saveScanEngineSynthesis, updateScanEngineStatus,
+  getScanEngine, getScanById, getQueriesForEngine, getQueriesForScan,
+  getScanEngines, updateQueryResult, saveScanEngineSynthesis, updateScanEngineStatus,
+  saveScanReview, saveScanReportData, supabase as supabaseGlobal,
 } from './_shared/supabase.js';
 import { getEngine, getEngineName } from './_shared/engineRegistry.js';
+import { buildReviewerPrompt, formatSynthesesForReview } from './_shared/reviewerPrompt.js';
 import { log } from './_shared/logger.js';
 import { extractGeminiTokens } from '@boriskulakhmetov-aidigital/design-system/utils';
 import { repairJson } from './_shared/repairJson.js';
 import { trackTokens } from './_shared/access.js';
-import type { GeneratedQuery, EngineId, EngineSynthesis } from './_shared/types.js';
+import type { GeneratedQuery, EngineId, EngineSynthesis, CrossEngineReview, AIOReportData, QueryLogEntry } from './_shared/types.js';
 
 const APP_NAME = 'aio-optimization';
 
@@ -383,7 +385,8 @@ async function runPipeline({ scanId, scanConfig, selectedEngines, queryCount, us
       }
     }));
 
-    // 3c. Trigger review
+    // 3c. Run review INLINE (cross-engine synthesis)
+    send('reviewing');
     await supabase.from('job_status').update({
       status: 'streaming',
       meta: { scan_id: scanId, phase: 'reviewing' },
@@ -394,27 +397,125 @@ async function runPipeline({ scanId, scanConfig, selectedEngines, queryCount, us
     const reviewId = `${scanId}_review`;
     await supabase.from('scan_review').upsert({ id: reviewId, scan_id: scanId, status: 'pending' });
 
-    for (let attempt = 0; attempt < 3; attempt++) {
-      try {
-        const resp = await fetch(`${siteUrl}/.netlify/functions/review-background`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ scanId, userId }),
-        });
-        console.log(`[pipeline] Review trigger attempt ${attempt}: ${resp.status}`);
-        if (resp.status === 202 || resp.ok) break;
-      } catch (err) {
-        console.warn(`[pipeline] Review trigger attempt ${attempt} failed:`, err);
-        if (attempt < 2) await new Promise(r => setTimeout(r, 2000));
-      }
-    }
+    const allEngines = await getScanEngines(scanId);
+    const synthesizedEngines = allEngines.filter(e => e.synthesis_data);
 
-    log.info('aio-pipeline.review_triggered', {
-      function_name: 'aio-pipeline',
-      user_id: userId,
-      entity_type: 'scan',
-      entity_id: scanId,
-    });
+    if (synthesizedEngines.length > 0) {
+      const synthesesForReview = synthesizedEngines.map(e => ({
+        engine_id: e.engine_id,
+        engine_name: getEngineName(e.engine_id as EngineId),
+        synthesis_data: e.synthesis_data,
+      }));
+
+      const reviewSystemPrompt = buildReviewerPrompt({
+        conceptName: scan?.concept_name || scanConfig.concept_name,
+        conceptType: scan?.concept_type || scanConfig.concept_type,
+        conceptCategory: scan?.concept_category || scanConfig.concept_category || '',
+        conceptContext: scan?.concept_context || scanConfig.concept_context,
+        engineCount: synthesizedEngines.length,
+      });
+
+      const synthesisInput = formatSynthesesForReview(synthesesForReview);
+
+      let reviewText = '';
+      let reviewResult: any = null;
+      for (let attempt = 0; attempt < 3; attempt++) {
+        try {
+          const result = await gemini.models.generateContent({
+            model: 'gemini-3.1-pro-preview',
+            contents: [{ role: 'user', parts: [{ text: synthesisInput }] }],
+            config: { systemInstruction: reviewSystemPrompt, maxOutputTokens: 16384, temperature: 0.3, responseMimeType: 'application/json' },
+          });
+          reviewText = result.text ?? '';
+          reviewResult = result;
+          break;
+        } catch (retryErr: any) {
+          if (attempt < 2 && (retryErr.message?.includes('502') || retryErr.message?.includes('503'))) {
+            await new Promise(r => setTimeout(r, 3000 * (attempt + 1)));
+            continue;
+          }
+          throw retryErr;
+        }
+      }
+
+      const reviewTokens = extractGeminiTokens(reviewResult ?? {});
+      if (userId) trackTokens(userId, 'aio-optimization', 'gemini', 'gemini-3.1-pro-preview', reviewTokens.inputTokens, reviewTokens.outputTokens, reviewTokens.totalTokens).catch(() => {});
+
+      let review: CrossEngineReview;
+      try {
+        review = JSON.parse(reviewText);
+      } catch {
+        try { review = JSON.parse(repairJson(reviewText)); } catch {
+          const match = reviewText.match(/\{[\s\S]*\}/);
+          if (match) { review = JSON.parse(repairJson(match[0])); }
+          else throw new Error('Failed to parse review JSON');
+        }
+      }
+
+      await saveScanReview(scanId, review);
+
+      // Build query log + report data
+      const allQueries = await getQueriesForScan(scanId);
+      const queryLog: QueryLogEntry[] = allQueries.map(q => ({
+        engine_id: q.engine_id as EngineId,
+        query_text: q.query_text,
+        intent_type: q.intent_type,
+        mentioned: q.mentioned ?? false,
+        rank: q.mention_position ?? null,
+        sentiment: q.sentiment ?? null,
+        response_excerpt: (q.response_text ?? '').slice(0, 300),
+      }));
+
+      const engineSyntheses: EngineSynthesis[] = synthesizedEngines.map(e => {
+        const data = typeof e.synthesis_data === 'string' ? JSON.parse(e.synthesis_data) : e.synthesis_data;
+        return data as EngineSynthesis;
+      });
+
+      const computeAvg = (field: string) => {
+        const vals = engineSyntheses.map(e => (e as any)[field]).filter((v: any) => typeof v === 'number');
+        return vals.length ? vals.reduce((a: number, b: number) => a + b, 0) / vals.length : 0;
+      };
+
+      const reportData: AIOReportData = {
+        schema_version: '2.0',
+        meta: {
+          concept_type: scan?.concept_type || scanConfig.concept_type,
+          concept_name: scan?.concept_name || scanConfig.concept_name,
+          concept_category: scan?.concept_category || scanConfig.concept_category,
+          engines_tested: synthesizedEngines.map(e => e.engine_id as EngineId),
+          total_queries: allEngines.reduce((sum, e) => sum + (e.queries_total ?? 0), 0),
+          scan_date: new Date().toISOString(),
+          scan_duration_seconds: Math.round((Date.now() - new Date(scan?.created_at || Date.now()).getTime()) / 1000),
+        },
+        executive_summary: review.executive_summary,
+        overall_kpis: {
+          ai_sov: review.overall_ai_sov,
+          first_position_rate: review.overall_first_position_rate,
+          top3_rate: computeAvg('top3_rate'),
+          net_sentiment: review.overall_net_sentiment,
+          rsi: computeAvg('recommendation_strength_index'),
+          discovery_capture_rate: computeAvg('discovery_capture_rate'),
+          competitive_win_rate: computeAvg('competitive_win_rate'),
+          engine_consistency: review.engine_consistency,
+        },
+        engine_syntheses: engineSyntheses,
+        cross_engine_review: review,
+        query_log: queryLog,
+      };
+
+      await saveScanReportData(scanId, reportData);
+      await writeJobStatus(scanId, { status: 'complete', completed_at: new Date().toISOString() });
+
+      log.info('aio-pipeline.complete', {
+        function_name: 'aio-pipeline',
+        user_id: userId,
+        entity_type: 'scan',
+        entity_id: scanId,
+        meta: { ai_sov: review.overall_ai_sov, engines: synthesizedEngines.length },
+      });
+    } else {
+      await writeJobStatus(scanId, { status: 'error', error: 'No engine syntheses available for review' });
+    }
 
   } catch (err) {
     log.error('aio-pipeline.error', {
