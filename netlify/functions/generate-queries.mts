@@ -53,6 +53,8 @@ export default async (req: Request) => {
       function_name: 'generate-queries',
       user_id: userId,
       user_email: email,
+      ai_provider: 'gemini',
+      ai_model: 'gemini-3-flash-preview',
       meta: { concept_name, concept_type, concept_category, engines: engines.length, query_count: clampedCount },
     });
 

@@ -86,6 +86,8 @@ async function runPipeline({ scanId, scanConfig, selectedEngines, queryCount, us
     user_email: userEmail,
     entity_type: 'scan',
     entity_id: scanId,
+    ai_provider: 'gemini',
+    ai_model: 'gemini-3-flash-preview',
     meta: { engines: selectedEngines, queryCount },
   });
 

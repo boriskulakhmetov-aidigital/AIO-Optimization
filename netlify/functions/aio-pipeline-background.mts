@@ -47,6 +47,8 @@ export default async (req: Request) => {
     user_email: userEmail,
     entity_type: 'scan',
     entity_id: scanId,
+    ai_provider: 'gemini',
+    ai_model: 'gemini-3-flash-preview',
     meta: { engines: selectedEngines, queryCount },
   });
 

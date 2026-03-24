@@ -87,7 +87,7 @@ export default async (req: Request) => {
       }, 15_000);
 
       try {
-        log.info('orchestrator.start', { function_name: 'orchestrator', user_id: userId, user_email: email });
+        log.info('orchestrator.start', { function_name: 'orchestrator', user_id: userId, user_email: email, ai_provider: 'gemini', ai_model: 'gemini-3-flash-preview' });
         const timer = log.time('gemini.call', { function_name: 'orchestrator', user_id: userId, user_email: email, ai_provider: 'gemini', ai_model: 'gemini-3-flash-preview' });
 
         const stream = await ai.models.generateContentStream({
