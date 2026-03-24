@@ -38,6 +38,10 @@ function getSupabase() {
   return createClient(process.env.SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!);
 }
 
+/**
+ * Streaming function — returns heartbeats to keep alive past 26s.
+ * Synthesis and review tasks need 30-120s (Gemini Pro calls).
+ */
 export default async (req: Request) => {
   const supabase = getSupabase();
 
@@ -51,67 +55,85 @@ export default async (req: Request) => {
   const { id: taskId, scan_id: scanId, task_type: taskType, payload } = task;
   console.log(`[task-worker] Claimed task ${taskId}: ${taskType} for scan ${scanId}`);
 
-  try {
-    switch (taskType) {
-      case 'generate_queries':
-        await handleGenerateQueries(supabase, scanId, payload);
-        break;
-      case 'dispatch_engines':
-        await handleDispatchEngines(supabase, scanId, payload);
-        break;
-      case 'check_engines_done':
-        await handleCheckEnginesDone(supabase, scanId, payload);
-        break;
-      case 'synthesize_engine':
-        await handleSynthesizeEngine(supabase, scanId, payload);
-        break;
-      case 'check_synthesis_done':
-        await handleCheckSynthesisDone(supabase, scanId, payload);
-        break;
-      case 'review':
-        await handleReview(supabase, scanId, payload);
-        break;
-      default:
-        throw new Error(`Unknown task type: ${taskType}`);
+  // For quick tasks, return JSON directly
+  const quickTasks = ['check_engines_done', 'check_synthesis_done', 'dispatch_engines'];
+  if (quickTasks.includes(taskType)) {
+    try {
+      await executeTask(supabase, task);
+      await supabase.from('pipeline_tasks').update({
+        status: 'complete', completed_at: new Date().toISOString(), updated_at: new Date().toISOString(),
+      }).eq('id', taskId);
+      return Response.json({ status: 'ok', taskType, scanId });
+    } catch (err: any) {
+      await handleTaskError(supabase, task, err);
+      return Response.json({ status: 'error', taskType, error: err.message });
     }
-
-    // Mark task complete
-    await supabase.from('pipeline_tasks').update({
-      status: 'complete',
-      completed_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
-    }).eq('id', taskId);
-
-    return Response.json({ status: 'ok', taskType, scanId });
-
-  } catch (err: any) {
-    console.error(`[task-worker] Task ${taskId} (${taskType}) failed:`, err.message);
-
-    // Mark task as error (will be retried if attempts < max_attempts)
-    const willRetry = task.attempts < task.max_attempts;
-    await supabase.from('pipeline_tasks').update({
-      status: willRetry ? 'pending' : 'failed',
-      error: err.message?.slice(0, 500),
-      updated_at: new Date().toISOString(),
-    }).eq('id', taskId);
-
-    // If all retries exhausted, mark scan as error
-    if (!willRetry) {
-      await writeJobStatus(scanId, {
-        status: 'error',
-        error: `Task ${taskType} failed after ${task.max_attempts} attempts: ${err.message?.slice(0, 200)}`,
-      });
-      log.error('task-worker.exhausted', {
-        function_name: 'task-worker',
-        entity_id: scanId,
-        message: err.message,
-        meta: { taskType, taskId, attempts: task.attempts },
-      });
-    }
-
-    return Response.json({ status: 'error', taskType, error: err.message });
   }
+
+  // For long tasks (generate, synthesize, review), use streaming to stay alive
+  const stream = new ReadableStream({
+    async start(controller) {
+      const encoder = new TextEncoder();
+      const send = (msg: string) => { try { controller.enqueue(encoder.encode(`data: ${msg}\n\n`)); } catch {} };
+      const heartbeat = setInterval(() => send('heartbeat'), 10_000);
+
+      try {
+        send(`running ${taskType}`);
+        await executeTask(supabase, task);
+        await supabase.from('pipeline_tasks').update({
+          status: 'complete', completed_at: new Date().toISOString(), updated_at: new Date().toISOString(),
+        }).eq('id', taskId);
+        send(`done ${taskType}`);
+      } catch (err: any) {
+        send(`error ${err.message}`);
+        await handleTaskError(supabase, task, err);
+      } finally {
+        clearInterval(heartbeat);
+        controller.close();
+      }
+    },
+  });
+
+  return new Response(stream, {
+    headers: { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache' },
+  });
 };
+
+async function executeTask(supabase: any, task: any) {
+  const { scan_id: scanId, task_type: taskType, payload } = task;
+  switch (taskType) {
+    case 'generate_queries': return handleGenerateQueries(supabase, scanId, payload);
+    case 'dispatch_engines': return handleDispatchEngines(supabase, scanId, payload);
+    case 'check_engines_done': return handleCheckEnginesDone(supabase, scanId, payload);
+    case 'synthesize_engine': return handleSynthesizeEngine(supabase, scanId, payload);
+    case 'check_synthesis_done': return handleCheckSynthesisDone(supabase, scanId, payload);
+    case 'review': return handleReview(supabase, scanId, payload);
+    default: throw new Error(`Unknown task type: ${taskType}`);
+  }
+}
+
+async function handleTaskError(supabase: any, task: any, err: any) {
+  const { id: taskId, scan_id: scanId, task_type: taskType } = task;
+  console.error(`[task-worker] Task ${taskId} (${taskType}) failed:`, err.message);
+
+  const willRetry = task.attempts < task.max_attempts;
+  await supabase.from('pipeline_tasks').update({
+    status: willRetry ? 'pending' : 'failed',
+    error: err.message?.slice(0, 500),
+    updated_at: new Date().toISOString(),
+  }).eq('id', taskId);
+
+  if (!willRetry) {
+    await writeJobStatus(scanId, {
+      status: 'error',
+      error: `Task ${taskType} failed after ${task.max_attempts} attempts: ${err.message?.slice(0, 200)}`,
+    });
+    log.error('task-worker.exhausted', {
+      function_name: 'task-worker', entity_id: scanId,
+      message: err.message, meta: { taskType, taskId, attempts: task.attempts },
+    });
+  }
+}
 
 // ── Task Handlers ─────────────────────────────────────────────────────────────
 
