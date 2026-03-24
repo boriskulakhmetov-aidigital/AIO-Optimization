@@ -130,27 +130,7 @@ export default async (req: Request) => {
       `Engine ${engineId} complete: ${completed - failed}/${totalQueries} ok, ${failed} failed`
     );
 
-    // Trigger synthesis for this engine with retry
-    const baseUrl = new URL(req.url);
-    const origin = `${baseUrl.protocol}//${baseUrl.host}`;
-    const synthBody = JSON.stringify({ scanId, engineJobId, userId: body.userId });
-
-    for (let attempt = 0; attempt < 3; attempt++) {
-      try {
-        const synthResp = await fetch(`${origin}/.netlify/functions/synthesize-engine-background`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: synthBody,
-        });
-        console.log(`[scan-engine-background] Synthesis trigger for ${engineId} attempt ${attempt}: ${synthResp.status}`);
-        if (synthResp.status === 202 || synthResp.ok) break;
-      } catch (err) {
-        console.warn(`[scan-engine-background] Synthesis trigger for ${engineId} attempt ${attempt} failed:`, err);
-        if (attempt < 2) await new Promise(r => setTimeout(r, 1000));
-      }
-    }
-
-    // Check if all engines are done — if so, create synthesis tasks (event-driven)
+    // Event-driven: when last engine completes, create synthesis tasks via pipeline_tasks
     const allEngines = await getScanEngines(scanId);
     const allDone = allEngines.every(e => e.status === 'complete' || e.status === 'error');
     if (allDone) {
