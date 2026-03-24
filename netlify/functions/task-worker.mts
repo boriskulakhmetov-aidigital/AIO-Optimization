@@ -62,8 +62,9 @@ export default async (req: Request) => {
   const { id: taskId, scan_id: scanId, task_type: taskType, payload } = task;
   console.log(`[task-worker] Claimed task ${taskId}: ${taskType} for scan ${scanId}`);
 
-  // dispatch_engines is fast (creates records, fires workers) — return JSON directly
-  if (taskType === 'dispatch_engines') {
+  // Quick tasks: dispatch to background functions or create records — return JSON
+  const quickTasks = ['dispatch_engines', 'synthesize_engine', 'review'];
+  if (quickTasks.includes(taskType)) {
     try {
       await executeTask(supabase, task);
       await supabase.from('pipeline_tasks').update({
@@ -110,8 +111,8 @@ async function executeTask(supabase: any, task: any) {
   switch (taskType) {
     case 'generate_queries': return handleGenerateQueries(supabase, scanId, payload);
     case 'dispatch_engines': return handleDispatchEngines(supabase, scanId, payload);
-    case 'synthesize_engine': return handleSynthesizeEngine(supabase, scanId, payload);
-    case 'review': return handleReview(supabase, scanId, payload);
+    case 'synthesize_engine': return dispatchToBackground(scanId, payload, 'synthesize-engine-background');
+    case 'review': return dispatchToBackground(scanId, payload, 'review-background');
     default: throw new Error(`Unknown task type: ${taskType}`);
   }
 }
@@ -137,6 +138,27 @@ async function handleTaskError(supabase: any, task: any, err: any) {
       message: err.message, meta: { taskType, taskId, attempts: task.attempts },
     });
   }
+}
+
+// ── Dispatch to background functions (long Gemini calls need >26s) ────────────
+
+async function dispatchToBackground(scanId: string, payload: any, functionName: string) {
+  const siteUrl = process.env.URL || 'https://aio-optimization.apps.aidigitallabs.com';
+  const body: Record<string, unknown> = { scanId, userId: payload.userId };
+
+  // synthesize-engine-background needs engineJobId
+  if (payload.engineJobId) body.engineJobId = payload.engineJobId;
+
+  const res = await fetch(`${siteUrl}/.netlify/functions/${functionName}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+
+  if (!res.ok && res.status !== 202) {
+    throw new Error(`Failed to dispatch ${functionName}: ${res.status}`);
+  }
+  console.log(`[task-worker] Dispatched ${functionName} for scan ${scanId}: ${res.status}`);
 }
 
 // ── Task Handlers ─────────────────────────────────────────────────────────────

@@ -185,51 +185,27 @@ export default async (req: Request) => {
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
-async function checkAndTriggerReview(scanId: string, req: Request) {
+async function checkAndTriggerReview(scanId: string, _req: Request) {
   const allSynthesized = await areAllEnginesSynthesized(scanId);
   if (!allSynthesized) return;
 
-  console.log(`All engines synthesized for scan ${scanId} — triggering cross-engine review`);
+  console.log(`All engines synthesized for scan ${scanId} — creating review task`);
 
   // Update scan status
   await updateScanStatus(scanId, 'reviewing');
-
-  // Write job status for Realtime phase tracking
   await writeJobStatus(scanId, { status: 'streaming', meta: { phase: 'reviewing' } });
 
   // Create review record
   const reviewId = `${scanId}_review`;
   await createScanReview(reviewId, scanId);
 
-  // Trigger review background function with retry
-  const baseUrl = new URL(req.url);
-  const origin = `${baseUrl.protocol}//${baseUrl.host}`;
-  const reviewBody = JSON.stringify({ scanId, userId });
-
-  let reviewTriggered = false;
-  for (let attempt = 0; attempt < 3; attempt++) {
-    try {
-      const reviewResp = await fetch(`${origin}/.netlify/functions/review-background`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: reviewBody,
-      });
-      console.log(`[synthesize] Review trigger attempt ${attempt}: ${reviewResp.status}`);
-      if (reviewResp.status === 202 || reviewResp.ok) {
-        reviewTriggered = true;
-        break;
-      }
-    } catch (err) {
-      console.warn(`[synthesize] Review trigger attempt ${attempt} failed:`, err);
-      if (attempt < 2) await new Promise(r => setTimeout(r, 1000));
-    }
-  }
-
-  if (!reviewTriggered) {
-    console.error(`[synthesize] Review failed to trigger for scan ${scanId}`);
-    await writeJobStatus(scanId, {
-      status: 'error',
-      error: 'Failed to start cross-engine review. Please retry the scan.',
-    });
-  }
+  // Event-driven: create review task via pipeline_tasks → webhook fires instantly
+  const { createClient } = await import('@supabase/supabase-js');
+  const supabase = createClient(process.env.SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!);
+  await supabase.from('pipeline_tasks').insert({
+    app: 'aio-optimization',
+    scan_id: scanId,
+    task_type: 'review',
+    payload: { userId, scanConfig: {} },
+  });
 }
