@@ -53,7 +53,7 @@ export default async (req: Request) => {
     }
 
     // ── Tier-based access control (skip for API/internal users) ────────────
-    if (!userId.startsWith('api:')) {
+    if (!userId.startsWith('api:') && !userId.startsWith('embed:')) {
       const access = await enforceAccess(userId, 'aio-optimization');
       if (!access.allowed) {
         return Response.json({ error: access.reason ?? 'Access denied' }, { status: 403 });
