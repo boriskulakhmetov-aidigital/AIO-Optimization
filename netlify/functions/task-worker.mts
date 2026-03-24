@@ -290,14 +290,21 @@ async function handleCheckEnginesDone(supabase: any, scanId: string, payload: an
   const allDone = engines.every((e: any) => e.status === 'complete' || e.status === 'error');
 
   if (!allDone) {
-    // Not done yet — re-enqueue this check (will run again in ~5s)
-    // Mark current task as complete so a new pending one is created
-    await supabase.from('pipeline_tasks').insert({
-    app: 'aio-optimization',
-      scan_id: scanId,
-      task_type: 'check_engines_done',
-      payload,
-    });
+    // Not done yet — re-enqueue ONLY if no pending check already exists (prevent duplication)
+    const { data: existing } = await supabase.from('pipeline_tasks')
+      .select('id')
+      .eq('scan_id', scanId)
+      .eq('task_type', 'check_engines_done')
+      .eq('status', 'pending')
+      .limit(1);
+    if (!existing?.length) {
+      await supabase.from('pipeline_tasks').insert({
+        app: 'aio-optimization',
+        scan_id: scanId,
+        task_type: 'check_engines_done',
+        payload,
+      });
+    }
     return;
   }
 
@@ -335,13 +342,21 @@ async function handleCheckSynthesisDone(supabase: any, scanId: string, payload: 
   const allSynthesized = engines.every((e: any) => e.synthesis_data != null || e.status === 'error');
 
   if (!allSynthesized) {
-    // Not done yet — re-enqueue
-    await supabase.from('pipeline_tasks').insert({
-    app: 'aio-optimization',
-      scan_id: scanId,
-      task_type: 'check_synthesis_done',
-      payload,
-    });
+    // Not done yet — re-enqueue ONLY if no pending check already exists (prevent duplication)
+    const { data: existing } = await supabase.from('pipeline_tasks')
+      .select('id')
+      .eq('scan_id', scanId)
+      .eq('task_type', 'check_synthesis_done')
+      .eq('status', 'pending')
+      .limit(1);
+    if (!existing?.length) {
+      await supabase.from('pipeline_tasks').insert({
+        app: 'aio-optimization',
+        scan_id: scanId,
+        task_type: 'check_synthesis_done',
+        payload,
+      });
+    }
     return;
   }
 
