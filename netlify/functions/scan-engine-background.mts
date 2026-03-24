@@ -41,6 +41,7 @@ export default async (req: Request) => {
     conceptCategory: string;
     conceptContext?: string;
     userId?: string | null;
+    userEmail?: string | null;
   };
 
   try {
@@ -49,12 +50,12 @@ export default async (req: Request) => {
     return new Response('Invalid JSON', { status: 400 });
   }
 
-  const { scanId, engineId, engineJobId, userId } = body;
+  const { scanId, engineId, engineJobId, userId, userEmail } = body;
   console.log(`[scan-engine-background] Starting engine=${engineId} scan=${scanId} job=${engineJobId} user=${userId || 'unknown'}`);
   const engineConfig = getEngine(engineId);
   const rateLimiter = new RateLimiter(engineId);
   const startTime = Date.now();
-  log.info('scan.engine.start', { function_name: 'scan-engine-background', entity_type: 'scan', entity_id: engineJobId, correlation_id: scanId, user_id: userId || undefined, meta: { engine_id: engineId } });
+  log.info('scan.engine.start', { function_name: 'scan-engine-background', entity_type: 'scan', entity_id: engineJobId, correlation_id: scanId, user_id: userId || undefined, user_email: userEmail || undefined, meta: { engine_id: engineId } });
 
   try {
     // Mark engine as querying
@@ -125,7 +126,7 @@ export default async (req: Request) => {
     await updateScanEngineStatus(engineJobId, 'complete');
     await updateJobProgress(scanId, engineId, 'complete', completed, totalQueries);
 
-    log.info('scan.engine.complete', { function_name: 'scan-engine-background', user_id: body.userId, entity_type: 'scan', entity_id: engineJobId, correlation_id: scanId, duration_ms: Date.now() - startTime, meta: { engine_id: engineId, completed: completed - failed, failed, total: totalQueries } });
+    log.info('scan.engine.complete', { function_name: 'scan-engine-background', user_id: body.userId, user_email: body.userEmail, entity_type: 'scan', entity_id: engineJobId, correlation_id: scanId, duration_ms: Date.now() - startTime, meta: { engine_id: engineId, completed: completed - failed, failed, total: totalQueries } });
     console.log(
       `Engine ${engineId} complete: ${completed - failed}/${totalQueries} ok, ${failed} failed`
     );
@@ -150,6 +151,7 @@ export default async (req: Request) => {
             engineId: eng.engine_id,
             engineJobId: eng.id,
             userId: body.userId,
+            userEmail: body.userEmail,
             scanConfig: { concept_name: body.conceptName, concept_type: body.conceptType, concept_category: body.conceptCategory, concept_context: body.conceptContext },
           },
         });
@@ -158,7 +160,7 @@ export default async (req: Request) => {
 
   } catch (err) {
     console.error(`scan-engine-background fatal error (${engineId}):`, err);
-    log.error('scan.engine.error', { function_name: 'scan-engine-background', user_id: body.userId, entity_type: 'scan', entity_id: engineJobId, correlation_id: scanId, error: err, error_category: 'engine_api', duration_ms: Date.now() - startTime, meta: { engine_id: engineId } });
+    log.error('scan.engine.error', { function_name: 'scan-engine-background', user_id: body.userId, user_email: body.userEmail, entity_type: 'scan', entity_id: engineJobId, correlation_id: scanId, error: err, error_category: 'engine_api', duration_ms: Date.now() - startTime, meta: { engine_id: engineId } });
     await updateScanEngineStatus(engineJobId, 'error', String(err));
     await updateJobProgress(scanId, engineId, 'error', 0, 0);
   }

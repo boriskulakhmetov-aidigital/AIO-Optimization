@@ -37,14 +37,15 @@ export default async (req: Request) => {
     return new Response('Missing scanId or engineJobId', { status: 400 });
   }
 
-  const { scanId, engineJobId, userId } = body as {
+  const { scanId, engineJobId, userId, userEmail } = body as {
     scanId: string;
     engineJobId: string;
     userId?: string;
+    userEmail?: string | null;
   };
 
   const startTime = Date.now();
-  log.info('synthesis.start', { function_name: 'synthesize-engine-background', user_id: userId, entity_type: 'scan', entity_id: engineJobId, correlation_id: scanId, ai_provider: 'gemini', ai_model: 'gemini-3.1-pro-preview' });
+  log.info('synthesis.start', { function_name: 'synthesize-engine-background', user_id: userId, user_email: userEmail, entity_type: 'scan', entity_id: engineJobId, correlation_id: scanId, ai_provider: 'gemini', ai_model: 'gemini-3.1-pro-preview' });
 
   try {
     // Load engine info and scan context
@@ -70,7 +71,7 @@ export default async (req: Request) => {
     if (completedQueries.length === 0) {
       console.warn(`No completed queries for engine ${engineId}, skipping synthesis`);
       await updateScanEngineStatus(engineJobId, 'complete');
-      await checkAndTriggerReview(scanId, req);
+      await checkAndTriggerReview(scanId, userId, userEmail);
       return new Response('No queries to synthesize', { status: 200 });
     }
 
@@ -166,15 +167,15 @@ export default async (req: Request) => {
     // Save synthesis
     await saveScanEngineSynthesis(engineJobId, synthesisData as EngineSynthesis);
 
-    log.info('synthesis.complete', { function_name: 'synthesize-engine-background', user_id: scan.user_id, entity_type: 'scan', entity_id: engineJobId, correlation_id: scanId, ai_provider: 'gemini', ai_model: 'gemini-3.1-pro-preview', duration_ms: Date.now() - startTime, ai_input_tokens: synthTokens.inputTokens, ai_output_tokens: synthTokens.outputTokens, ai_total_tokens: synthTokens.totalTokens, meta: { engine_id: engineId, ai_sov: synthesis.ai_sov } });
+    log.info('synthesis.complete', { function_name: 'synthesize-engine-background', user_id: userId || scan.user_id, user_email: userEmail || scan.user_email, entity_type: 'scan', entity_id: engineJobId, correlation_id: scanId, ai_provider: 'gemini', ai_model: 'gemini-3.1-pro-preview', duration_ms: Date.now() - startTime, ai_input_tokens: synthTokens.inputTokens, ai_output_tokens: synthTokens.outputTokens, ai_total_tokens: synthTokens.totalTokens, meta: { engine_id: engineId, ai_sov: synthesis.ai_sov } });
     console.log(`Synthesis complete for ${engineName}: AI-SOV=${synthesis.ai_sov}%, RSI=${synthesis.recommendation_strength_index}`);
 
     // Check if all engines are done and trigger review
-    await checkAndTriggerReview(scanId, userId);
+    await checkAndTriggerReview(scanId, userId, userEmail);
 
   } catch (err) {
     console.error(`synthesize-engine-background error (${engineJobId}):`, err);
-    log.error('synthesis.error', { function_name: 'synthesize-engine-background', user_id: userId || scan?.user_id, entity_type: 'scan', entity_id: engineJobId, correlation_id: scanId, error: err, error_category: 'gemini_api', duration_ms: Date.now() - startTime });
+    log.error('synthesis.error', { function_name: 'synthesize-engine-background', user_id: userId, user_email: userEmail, entity_type: 'scan', entity_id: engineJobId, correlation_id: scanId, error: err, error_category: 'gemini_api', duration_ms: Date.now() - startTime });
     await updateScanEngineStatus(engineJobId, 'error', `Synthesis failed: ${err}`);
   }
 
@@ -185,7 +186,7 @@ export default async (req: Request) => {
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
-async function checkAndTriggerReview(scanId: string, userId?: string) {
+async function checkAndTriggerReview(scanId: string, userId?: string, userEmail?: string | null) {
   const allSynthesized = await areAllEnginesSynthesized(scanId);
   if (!allSynthesized) return;
 
@@ -204,6 +205,6 @@ async function checkAndTriggerReview(scanId: string, userId?: string) {
     app: 'aio-optimization',
     scan_id: scanId,
     task_type: 'review',
-    payload: { userId: userId || null, scanConfig: {} },
+    payload: { userId: userId || null, userEmail: userEmail || null, scanConfig: {} },
   });
 }

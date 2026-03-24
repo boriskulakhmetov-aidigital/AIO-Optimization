@@ -44,6 +44,7 @@ export default async (req: Request) => {
   log.info('aio-pipeline.start', {
     function_name: 'aio-pipeline-background',
     user_id: userId,
+    user_email: userEmail,
     entity_type: 'scan',
     entity_id: scanId,
     meta: { engines: selectedEngines, queryCount },
@@ -127,6 +128,7 @@ export default async (req: Request) => {
     log.info('aio-pipeline.queries_generated', {
       function_name: 'aio-pipeline-background',
       user_id: userId,
+      user_email: userEmail,
       entity_type: 'scan',
       entity_id: scanId,
       meta: { query_count: queries?.length, engines: selectedEngines },
@@ -215,12 +217,14 @@ export default async (req: Request) => {
             conceptCategory: scanConfig.concept_category,
             conceptContext: scanConfig.concept_context,
             userId: userId || null,
+            userEmail: userEmail || null,
           }),
         });
       } catch (err) {
         log.warn('aio-pipeline.engine_trigger_failed', {
           function_name: 'aio-pipeline-background',
           user_id: userId,
+          user_email: userEmail,
           message: err instanceof Error ? err.message : String(err),
           meta: { scanId, engineId },
         });
@@ -235,6 +239,7 @@ export default async (req: Request) => {
     log.info('aio-pipeline.dispatched', {
       function_name: 'aio-pipeline-background',
       user_id: userId,
+      user_email: userEmail,
       entity_type: 'scan',
       entity_id: scanId,
       meta: { query_count: queries.length, engines: availableEngines, total_api_calls: queries.length * availableEngines.length },
@@ -340,11 +345,11 @@ export default async (req: Request) => {
         const { per_query_scores: _, ...synthesisData } = synthesis;
         await saveScanEngineSynthesis(engineJobId, synthesisData as EngineSynthesis);
 
-        log.info('synthesis.complete', { function_name: 'aio-pipeline-background', user_id: userId, entity_type: 'scan', entity_id: engineJobId, correlation_id: scanId, meta: { engine_id: engineId, ai_sov: synthesis.ai_sov } });
+        log.info('synthesis.complete', { function_name: 'aio-pipeline-background', user_id: userId, user_email: userEmail, entity_type: 'scan', entity_id: engineJobId, correlation_id: scanId, meta: { engine_id: engineId, ai_sov: synthesis.ai_sov } });
         console.log(`[pipeline] Synthesis complete for ${engineName}: AI-SOV=${synthesis.ai_sov}%`);
       } catch (err) {
         console.error(`[pipeline] Synthesis failed for ${engineId}:`, err);
-        log.error('synthesis.error', { function_name: 'aio-pipeline-background', user_id: userId, entity_type: 'scan', entity_id: engineJobId, correlation_id: scanId, message: err instanceof Error ? err.message : String(err), meta: { engine_id: engineId } });
+        log.error('synthesis.error', { function_name: 'aio-pipeline-background', user_id: userId, user_email: userEmail, entity_type: 'scan', entity_id: engineJobId, correlation_id: scanId, message: err instanceof Error ? err.message : String(err), meta: { engine_id: engineId } });
         await updateScanEngineStatus(engineJobId, 'error', `Synthesis failed: ${err}`);
       }
     }));
@@ -365,7 +370,7 @@ export default async (req: Request) => {
         const resp = await fetch(`${siteUrl}/.netlify/functions/review-background`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ scanId, userId }),
+          body: JSON.stringify({ scanId, userId, userEmail }),
         });
         console.log(`[pipeline] Review trigger attempt ${attempt}: ${resp.status}`);
         if (resp.status === 202 || resp.ok) break;
@@ -378,6 +383,7 @@ export default async (req: Request) => {
     log.info('aio-pipeline.review_triggered', {
       function_name: 'aio-pipeline-background',
       user_id: userId,
+      user_email: userEmail,
       entity_type: 'scan',
       entity_id: scanId,
     });
@@ -386,6 +392,7 @@ export default async (req: Request) => {
     log.error('aio-pipeline.error', {
       function_name: 'aio-pipeline-background',
       user_id: userId,
+      user_email: userEmail,
       message: err instanceof Error ? err.message : String(err),
       entity_type: 'scan',
       entity_id: scanId,

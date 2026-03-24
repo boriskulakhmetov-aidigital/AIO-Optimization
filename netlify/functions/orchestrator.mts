@@ -47,8 +47,12 @@ export default async (req: Request) => {
     return Response.json({ error: 'Method not allowed' }, { status: 405 });
   }
 
+  let userId: string | undefined;
+  let email: string | null = null;
   try {
-    await requireAuthOrEmbed(req);
+    const auth = await requireAuthOrEmbed(req);
+    userId = auth.userId;
+    email = auth.email;
   } catch {
     return Response.json({ error: 'Unauthorized' }, { status: 401 });
   }
@@ -58,7 +62,7 @@ export default async (req: Request) => {
   }
 
   const body = await req.json();
-  const { messages = [], userId } = body;
+  const { messages = [] } = body;
 
   const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 
@@ -83,8 +87,8 @@ export default async (req: Request) => {
       }, 15_000);
 
       try {
-        log.info('orchestrator.start', { function_name: 'orchestrator', user_id: userId });
-        const timer = log.time('gemini.call', { function_name: 'orchestrator', user_id: userId, ai_provider: 'gemini', ai_model: 'gemini-3-flash-preview' });
+        log.info('orchestrator.start', { function_name: 'orchestrator', user_id: userId, user_email: email });
+        const timer = log.time('gemini.call', { function_name: 'orchestrator', user_id: userId, user_email: email, ai_provider: 'gemini', ai_model: 'gemini-3-flash-preview' });
 
         const stream = await ai.models.generateContentStream({
           model: 'gemini-3-flash-preview',
@@ -118,7 +122,7 @@ export default async (req: Request) => {
         emit({ type: 'done' });
       } catch (err) {
         console.error('Orchestrator error:', err);
-        log.error('orchestrator.error', { function_name: 'orchestrator', user_id: userId, error: err, error_category: 'gemini_api' });
+        log.error('orchestrator.error', { function_name: 'orchestrator', user_id: userId, user_email: email, error: err, error_category: 'gemini_api' });
         emit({ type: 'error', message: String(err) });
       } finally {
         clearInterval(keepAliveInterval);

@@ -16,8 +16,12 @@ export default async (req: Request) => {
     return Response.json({ error: 'Method not allowed' }, { status: 405 });
   }
 
+  let userId: string | undefined;
+  let email: string | null = null;
   try {
-    const { userId } = await requireAuthOrEmbed(req);
+    const auth = await requireAuthOrEmbed(req);
+    userId = auth.userId;
+    email = auth.email;
 
     const body = await req.json();
     const {
@@ -48,6 +52,7 @@ export default async (req: Request) => {
     log.info('generate-queries.start', {
       function_name: 'generate-queries',
       user_id: userId,
+      user_email: email,
       meta: { concept_name, concept_type, concept_category, engines: engines.length, query_count: clampedCount },
     });
 
@@ -122,6 +127,7 @@ export default async (req: Request) => {
     log.info('generate-queries.complete', {
       function_name: 'generate-queries',
       user_id: userId,
+      user_email: email,
       meta: { query_count: queries.length, engines: engines.length, total_api_calls: queries.length * engines.length },
     });
 
@@ -136,6 +142,7 @@ export default async (req: Request) => {
     log.error('generate-queries.error', {
       function_name: 'generate-queries',
       user_id: userId,
+      user_email: email,
       message: err instanceof Error ? err.message : String(err),
     });
     console.error('generate-queries error:', err);

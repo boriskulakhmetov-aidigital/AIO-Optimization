@@ -135,6 +135,7 @@ async function handleTaskError(supabase: any, task: any, err: any) {
     });
     log.error('task-worker.exhausted', {
       function_name: 'task-worker', entity_id: scanId,
+      user_id: task.payload?.userId, user_email: task.payload?.userEmail,
       message: err.message, meta: { taskType, taskId, attempts: task.attempts },
     });
   }
@@ -144,7 +145,7 @@ async function handleTaskError(supabase: any, task: any, err: any) {
 
 async function dispatchToBackground(scanId: string, payload: any, functionName: string) {
   const siteUrl = process.env.URL || 'https://aio-optimization.apps.aidigitallabs.com';
-  const body: Record<string, unknown> = { scanId, userId: payload.userId };
+  const body: Record<string, unknown> = { scanId, userId: payload.userId, userEmail: payload.userEmail || null };
 
   // synthesize-engine-background needs engineJobId
   if (payload.engineJobId) body.engineJobId = payload.engineJobId;
@@ -164,7 +165,7 @@ async function dispatchToBackground(scanId: string, payload: any, functionName: 
 // ── Task Handlers ─────────────────────────────────────────────────────────────
 
 async function handleGenerateQueries(supabase: any, scanId: string, payload: any) {
-  const { scanConfig, queryCount, userId } = payload;
+  const { scanConfig, queryCount, userId, userEmail } = payload;
 
   await writeJobStatus(scanId, { status: 'streaming', meta: { scan_id: scanId, phase: 'generating_queries' } });
 
@@ -211,7 +212,7 @@ async function handleGenerateQueries(supabase: any, scanId: string, payload: any
   if (queries.length === 0) throw new Error(`Query generation failed: ${lastError}`);
 
   log.info('task-worker.queries_generated', {
-    function_name: 'task-worker', entity_id: scanId, user_id: userId,
+    function_name: 'task-worker', entity_id: scanId, user_id: userId, user_email: userEmail,
     meta: { query_count: queries.length },
   });
 
@@ -275,7 +276,7 @@ async function handleDispatchEngines(supabase: any, scanId: string, payload: any
           scanId, engineId, engineJobId: engineJobIds[engineId],
           conceptName: scanConfig.concept_name, conceptType: scanConfig.concept_type,
           conceptCategory: scanConfig.concept_category, conceptContext: scanConfig.concept_context,
-          userId,
+          userId, userEmail,
         }),
       });
     } catch (err) {
@@ -294,13 +295,13 @@ async function handleDispatchEngines(supabase: any, scanId: string, payload: any
   // synthesize_engine tasks when the last engine completes (event-driven).
 
   log.info('task-worker.dispatched', {
-    function_name: 'task-worker', entity_id: scanId, user_id: userId,
+    function_name: 'task-worker', entity_id: scanId, user_id: userId, user_email: userEmail,
     meta: { engines: availableEngines, query_count: queries.length },
   });
 }
 
 async function handleSynthesizeEngine(supabase: any, scanId: string, payload: any) {
-  const { engineId, engineJobId, userId, scanConfig } = payload;
+  const { engineId, engineJobId, userId, userEmail, scanConfig } = payload;
   const engineName = getEngineName(engineId);
 
   await updateScanEngineStatus(engineJobId, 'synthesizing');
@@ -367,7 +368,7 @@ async function handleSynthesizeEngine(supabase: any, scanId: string, payload: an
   await saveScanEngineSynthesis(engineJobId, synthesisData as EngineSynthesis);
 
   log.info('task-worker.synthesis_complete', {
-    function_name: 'task-worker', entity_id: engineJobId, user_id: userId,
+    function_name: 'task-worker', entity_id: engineJobId, user_id: userId, user_email: userEmail,
     meta: { engine_id: engineId, ai_sov: synthesis.ai_sov },
   });
 
@@ -380,13 +381,13 @@ async function handleSynthesizeEngine(supabase: any, scanId: string, payload: an
       app: 'aio-optimization',
       scan_id: scanId,
       task_type: 'review',
-      payload: { userId, scanConfig },
+      payload: { userId, userEmail, scanConfig },
     });
   }
 }
 
 async function handleReview(supabase: any, scanId: string, payload: any) {
-  const { userId, scanConfig } = payload;
+  const { userId, userEmail, scanConfig } = payload;
 
   await writeJobStatus(scanId, { status: 'streaming', meta: { phase: 'reviewing' } });
   await updateScanStatus(scanId, 'reviewing');
@@ -499,7 +500,7 @@ async function handleReview(supabase: any, scanId: string, payload: any) {
   if (userId) await trackUsage(userId, 'aio-optimization').catch(() => {});
 
   log.info('task-worker.review_complete', {
-    function_name: 'task-worker', entity_id: scanId, user_id: userId,
+    function_name: 'task-worker', entity_id: scanId, user_id: userId, user_email: userEmail,
     meta: { ai_sov: review.overall_ai_sov, engines: synthesizedEngines.length },
   });
 }

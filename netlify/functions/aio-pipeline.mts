@@ -83,6 +83,7 @@ async function runPipeline({ scanId, scanConfig, selectedEngines, queryCount, us
   log.info('aio-pipeline.start', {
     function_name: 'aio-pipeline',
     user_id: userId,
+    user_email: userEmail,
     entity_type: 'scan',
     entity_id: scanId,
     meta: { engines: selectedEngines, queryCount },
@@ -164,8 +165,9 @@ async function runPipeline({ scanId, scanConfig, selectedEngines, queryCount, us
     }
 
     log.info('aio-pipeline.queries_generated', {
-      function_name: 'aio-pipeline-background',
+      function_name: 'aio-pipeline',
       user_id: userId,
+      user_email: userEmail,
       entity_type: 'scan',
       entity_id: scanId,
       meta: { query_count: queries?.length, engines: selectedEngines },
@@ -254,12 +256,14 @@ async function runPipeline({ scanId, scanConfig, selectedEngines, queryCount, us
             conceptCategory: scanConfig.concept_category,
             conceptContext: scanConfig.concept_context,
             userId: userId || null,
+            userEmail: userEmail || null,
           }),
         });
       } catch (err) {
         log.warn('aio-pipeline.engine_trigger_failed', {
-          function_name: 'aio-pipeline-background',
+          function_name: 'aio-pipeline',
           user_id: userId,
+          user_email: userEmail,
           message: err instanceof Error ? err.message : String(err),
           meta: { scanId, engineId },
         });
@@ -272,8 +276,9 @@ async function runPipeline({ scanId, scanConfig, selectedEngines, queryCount, us
     }
 
     log.info('aio-pipeline.dispatched', {
-      function_name: 'aio-pipeline-background',
+      function_name: 'aio-pipeline',
       user_id: userId,
+      user_email: userEmail,
       entity_type: 'scan',
       entity_id: scanId,
       meta: { query_count: queries.length, engines: availableEngines, total_api_calls: queries.length * availableEngines.length },
@@ -382,11 +387,11 @@ async function runPipeline({ scanId, scanConfig, selectedEngines, queryCount, us
         const { per_query_scores: _, ...synthesisData } = synthesis;
         await saveScanEngineSynthesis(engineJobId, synthesisData as EngineSynthesis);
 
-        log.info('synthesis.complete', { function_name: 'aio-pipeline-background', user_id: userId, entity_type: 'scan', entity_id: engineJobId, correlation_id: scanId, meta: { engine_id: engineId, ai_sov: synthesis.ai_sov } });
+        log.info('synthesis.complete', { function_name: 'aio-pipeline', user_id: userId, user_email: userEmail, entity_type: 'scan', entity_id: engineJobId, correlation_id: scanId, meta: { engine_id: engineId, ai_sov: synthesis.ai_sov } });
         console.log(`[pipeline] Synthesis complete for ${engineName}: AI-SOV=${synthesis.ai_sov}%`);
       } catch (err) {
         console.error(`[pipeline] Synthesis failed for ${engineId}:`, err);
-        log.error('synthesis.error', { function_name: 'aio-pipeline-background', user_id: userId, entity_type: 'scan', entity_id: engineJobId, correlation_id: scanId, message: err instanceof Error ? err.message : String(err), meta: { engine_id: engineId } });
+        log.error('synthesis.error', { function_name: 'aio-pipeline', user_id: userId, user_email: userEmail, entity_type: 'scan', entity_id: engineJobId, correlation_id: scanId, message: err instanceof Error ? err.message : String(err), meta: { engine_id: engineId } });
         await updateScanEngineStatus(engineJobId, 'error', `Synthesis failed: ${err}`);
       }
     }));
@@ -521,6 +526,7 @@ async function runPipeline({ scanId, scanConfig, selectedEngines, queryCount, us
       log.info('aio-pipeline.complete', {
         function_name: 'aio-pipeline',
         user_id: userId,
+        user_email: userEmail,
         entity_type: 'scan',
         entity_id: scanId,
         meta: { ai_sov: review.overall_ai_sov, engines: synthesizedEngines.length },
@@ -533,6 +539,7 @@ async function runPipeline({ scanId, scanConfig, selectedEngines, queryCount, us
     log.error('aio-pipeline.error', {
       function_name: 'aio-pipeline',
       user_id: userId,
+      user_email: userEmail,
       message: err instanceof Error ? err.message : String(err),
       entity_type: 'scan',
       entity_id: scanId,

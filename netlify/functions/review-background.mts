@@ -37,9 +37,9 @@ export default async (req: Request) => {
     return new Response('Missing scanId', { status: 400 });
   }
 
-  const { scanId, userId } = body as { scanId: string; userId?: string };
+  const { scanId, userId, userEmail } = body as { scanId: string; userId?: string; userEmail?: string | null };
   const startTime = Date.now();
-  log.info('review.start', { function_name: 'review-background', user_id: userId, entity_type: 'scan', entity_id: scanId, correlation_id: scanId, ai_provider: 'gemini', ai_model: 'gemini-3.1-pro-preview' });
+  log.info('review.start', { function_name: 'review-background', user_id: userId, user_email: userEmail, entity_type: 'scan', entity_id: scanId, correlation_id: scanId, ai_provider: 'gemini', ai_model: 'gemini-3.1-pro-preview' });
 
   try {
     // Write job status so frontend can track review phase via Realtime
@@ -201,12 +201,12 @@ export default async (req: Request) => {
       );
     }
 
-    log.info('review.complete', { function_name: 'review-background', user_id: scan.user_id, entity_type: 'scan', entity_id: scanId, correlation_id: scanId, ai_provider: 'gemini', ai_model: 'gemini-3.1-pro-preview', duration_ms: Date.now() - startTime, ai_input_tokens: reviewTokens.inputTokens, ai_output_tokens: reviewTokens.outputTokens, ai_total_tokens: reviewTokens.totalTokens, meta: { ai_sov: review.overall_ai_sov, action_items: review.action_items?.length ?? 0 } });
+    log.info('review.complete', { function_name: 'review-background', user_id: userId || scan.user_id, user_email: userEmail || scan.user_email, entity_type: 'scan', entity_id: scanId, correlation_id: scanId, ai_provider: 'gemini', ai_model: 'gemini-3.1-pro-preview', duration_ms: Date.now() - startTime, ai_input_tokens: reviewTokens.inputTokens, ai_output_tokens: reviewTokens.outputTokens, ai_total_tokens: reviewTokens.totalTokens, meta: { ai_sov: review.overall_ai_sov, action_items: review.action_items?.length ?? 0 } });
     console.log(`Review complete for scan ${scanId}: AI-SOV=${review.overall_ai_sov}%, ${review.action_items?.length ?? 0} action items`);
 
   } catch (err) {
     console.error(`review-background error (${scanId}):`, err);
-    log.error('review.error', { function_name: 'review-background', user_id: userId, entity_type: 'scan', entity_id: scanId, correlation_id: scanId, error: err, error_category: 'gemini_api', duration_ms: Date.now() - startTime });
+    log.error('review.error', { function_name: 'review-background', user_id: userId, user_email: userEmail, entity_type: 'scan', entity_id: scanId, correlation_id: scanId, error: err, error_category: 'gemini_api', duration_ms: Date.now() - startTime });
     await updateScanStatus(scanId, 'error', `Review failed: ${err}`);
     await writeJobStatus(scanId, { status: 'error', error: `Review failed: ${err}` });
   }

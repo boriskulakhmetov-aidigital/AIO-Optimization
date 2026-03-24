@@ -155,6 +155,7 @@ export default async (req: Request) => {
             conceptCategory: config.concept_category,
             conceptContext: config.concept_context,
             userId,
+            userEmail: email,
           }),
         });
         console.log(`[dispatch-scan] ${engineId} trigger response: ${resp.status}`);
