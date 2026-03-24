@@ -105,7 +105,10 @@ export default async (req: Request) => {
   // Await + retry to avoid silent failures from cold starts or transient errors.
   const siteUrl = process.env.URL || new URL(req.url).origin;
   const apiKey = req.headers.get('X-API-Key') || '';
-  const pipelineBody = JSON.stringify({ scanId, scanConfig, selectedEngines, queryCount: clampedQueryCount, userId: auth.userId, userEmail: auth.email });
+  // Use the dispatching user's identity if provided (e.g. Concierge passing through the human user)
+  const effectiveUserId = (body._dispatched_by_user as string) || auth.userId;
+  const effectiveEmail = (body._dispatched_by_email as string) || auth.email;
+  const pipelineBody = JSON.stringify({ scanId, scanConfig, selectedEngines, queryCount: clampedQueryCount, userId: effectiveUserId, userEmail: effectiveEmail });
 
   let pipelineOk = false;
   for (let attempt = 0; attempt < 3; attempt++) {
