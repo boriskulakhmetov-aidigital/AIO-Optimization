@@ -70,7 +70,7 @@ export function ReportHeader({ data, conceptName, onNewScan, scanId, supabase }:
           jobId={scanId}
           supabase={supabase}
           tableName="scans"
-          shareBaseUrl={`${window.location.origin}/#/share/`}
+          shareBaseUrl={`${window.location.origin}/r/`}
         />
       )}
     </>
