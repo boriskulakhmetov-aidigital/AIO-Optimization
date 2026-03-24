@@ -116,41 +116,16 @@ export default async (req: Request) => {
     updated_at: new Date().toISOString(),
   }).eq('id', jobId);
 
-  // Try to trigger pipeline via multiple URL patterns (internal + external)
-  const apiKey = req.headers.get('X-API-Key') || '';
+  // Fire pipeline — DON'T await (it's a streaming function that runs for minutes).
+  // Just trigger the fetch and let it run independently.
   const pipelineBody = JSON.stringify({ scanId, scanConfig, selectedEngines, queryCount: clampedQueryCount, userId: effectiveUserId, userEmail: effectiveEmail });
+  const pipelineUrl = `${process.env.URL || 'https://aio-optimization.apps.aidigitallabs.com'}/.netlify/functions/aio-pipeline`;
 
-  const urls = [
-    `${process.env.URL || ''}/.netlify/functions/aio-pipeline-background`,
-    `https://aio-optimization.apps.aidigitallabs.com/.netlify/functions/aio-pipeline-background`,
-  ].filter(u => u.startsWith('http'));
-
-  let pipelineOk = false;
-  for (const url of urls) {
-    try {
-      const pipelineRes = await fetch(url, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'X-API-Key': apiKey },
-        body: pipelineBody,
-      });
-      console.log(`[api-submit] Pipeline trigger ${url.slice(-40)}: ${pipelineRes.status}`);
-      if (pipelineRes.status === 202 || pipelineRes.ok) {
-        pipelineOk = true;
-        break;
-      }
-    } catch (err) {
-      console.warn(`[api-submit] Pipeline trigger failed for ${url.slice(-40)}:`, err);
-    }
-  }
-
-  if (!pipelineOk) {
-    await supabase.from('job_status').update({
-      status: 'error',
-      error: 'Failed to start scan pipeline. Please retry.',
-      updated_at: new Date().toISOString(),
-    }).eq('id', jobId);
-    console.error(`[api-submit] Pipeline failed to start for scan ${scanId}`);
-  }
+  fetch(pipelineUrl, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: pipelineBody,
+  }).catch(err => console.warn('[api-submit] Pipeline trigger error:', err));
 
   // Log the API request
   await logApiRequest(supabase as any, {
