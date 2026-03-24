@@ -43,6 +43,13 @@ function getSupabase() {
  * Synthesis and review tasks need 30-120s (Gemini Pro calls).
  */
 export default async (req: Request) => {
+  // EMERGENCY: Return no-op if called by webhook (X-Task-Id header from pg_net)
+  // This breaks the webhook→task-worker→re-enqueue→webhook feedback loop
+  const isWebhook = req.headers.get('x-task-id') || req.headers.get('x-webhook');
+  if (isWebhook) {
+    return Response.json({ status: 'idle', message: 'Webhook calls disabled — use poller only' });
+  }
+
   const supabase = getSupabase();
 
   // Claim one pending task atomically
