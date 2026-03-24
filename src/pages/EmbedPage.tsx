@@ -87,7 +87,7 @@ export default function EmbedPage({ token, theme }: Props) {
     })
   }, [token, theme])
 
-  // Scan dispatch handler
+  // Scan dispatch handler — writes to pipeline_tasks via embed-submit
   const handleScanDispatch = useCallback(async (config: ScanDispatchConfig, sid: string, msgs: ChatMessage[]) => {
     if (!config.engines?.length) {
       setErrorDetail('No engines selected. Please select at least one AI engine.')
@@ -97,34 +97,11 @@ export default function EmbedPage({ token, theme }: Props) {
 
     setConceptName(config.concept_name)
     setScanId(sid)
-    setPhase('generating')
+    setPhase('scanning')
     setErrorDetail(null)
 
     try {
-      // Step 1: Generate queries
-      const genRes = await embedFetch('/.netlify/functions/generate-queries', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          concept_type: config.concept_type,
-          concept_name: config.concept_name,
-          concept_category: config.concept_category,
-          concept_context: config.concept_context,
-          engines: config.engines,
-          query_count: config.query_count,
-        }),
-      })
-      if (!genRes.ok) {
-        const errText = await genRes.text()
-        setErrorDetail(`Generate queries failed (${genRes.status}): ${errText}`)
-        setPhase('error')
-        return
-      }
-      const genData = await genRes.json()
-
-      // Step 2: Dispatch scan
-      setPhase('scanning')
-      const dispatchRes = await embedFetch('/.netlify/functions/dispatch-scan', {
+      const res = await embedFetch('/.netlify/functions/embed-submit', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -137,13 +114,12 @@ export default function EmbedPage({ token, theme }: Props) {
             engines: config.engines,
             query_count: config.query_count,
           },
-          queries: genData.queries,
           messages: msgs.map(m => ({ role: m.role, content: m.content })),
         }),
       })
-      if (!dispatchRes.ok) {
-        const errText = await dispatchRes.text()
-        setErrorDetail(`Dispatch scan failed (${dispatchRes.status}): ${errText}`)
+      if (!res.ok) {
+        const errText = await res.text()
+        setErrorDetail(`Submit failed (${res.status}): ${errText}`)
         setPhase('error')
       }
     } catch (err) {
