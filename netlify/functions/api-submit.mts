@@ -104,51 +104,30 @@ export default async (req: Request) => {
   const effectiveUserId = (body._dispatched_by_user as string) || auth.userId;
   const effectiveEmail = (body._dispatched_by_email as string) || auth.email;
 
-  // Store pipeline config in job_status meta so the pipeline can read it
-  // This avoids function-to-function triggers entirely — the pipeline reads from DB
-  await supabase.from('job_status').update({
-    meta: {
-      scan_id: scanId,
-      source: 'api',
-      key_id: auth.keyId,
-      pipeline_config: { scanId, scanConfig, selectedEngines, queryCount: clampedQueryCount, userId: effectiveUserId, userEmail: effectiveEmail },
+  // Enqueue the first pipeline task — the task-worker (cron) will pick it up
+  // No function-to-function calls, no background functions, no streaming hacks
+  const { error: taskError } = await supabase.from('pipeline_tasks').insert({
+    scan_id: scanId,
+    task_type: 'generate_queries',
+    payload: {
+      scanId,
+      scanConfig,
+      selectedEngines,
+      queryCount: clampedQueryCount,
+      userId: effectiveUserId,
+      userEmail: effectiveEmail,
     },
-    updated_at: new Date().toISOString(),
-  }).eq('id', jobId);
+  });
 
-  // Fire pipeline — await the connection (headers) but not the full stream body.
-  // The pipeline is a streaming function that runs for minutes; we just need to
-  // confirm it started, then return 202 to the caller.
-  const pipelineBody = JSON.stringify({ scanId, scanConfig, selectedEngines, queryCount: clampedQueryCount, userId: effectiveUserId, userEmail: effectiveEmail });
-  const pipelineUrl = `${process.env.URL || 'https://aio-optimization.apps.aidigitallabs.com'}/.netlify/functions/aio-pipeline`;
-
-  // Use AbortController to timeout after 3s — just enough to establish the
-  // connection and confirm the pipeline started. The pipeline keeps running
-  // via its streaming response even after we abort our read.
-  const abortCtrl = new AbortController();
-  const abortTimer = setTimeout(() => abortCtrl.abort(), 3000);
-  try {
-    const pipelineRes = await fetch(pipelineUrl, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: pipelineBody,
-      signal: abortCtrl.signal,
-    });
-    console.log(`[api-submit] Pipeline started: ${pipelineRes.status}`);
-  } catch (err: any) {
-    // AbortError is expected — means the connection was established and we moved on
-    if (err?.name !== 'AbortError') {
-      console.error('[api-submit] Pipeline trigger error:', err);
-      await supabase.from('job_status').update({
-        status: 'error',
-        error: 'Failed to start scan pipeline. Please retry.',
-        updated_at: new Date().toISOString(),
-      }).eq('id', jobId);
-    } else {
-      console.log('[api-submit] Pipeline connection established, moving on');
-    }
-  } finally {
-    clearTimeout(abortTimer);
+  if (taskError) {
+    console.error('[api-submit] Failed to enqueue task:', taskError);
+    await supabase.from('job_status').update({
+      status: 'error',
+      error: 'Failed to enqueue scan pipeline task.',
+      updated_at: new Date().toISOString(),
+    }).eq('id', jobId);
+  } else {
+    console.log(`[api-submit] Task enqueued: generate_queries for scan ${scanId}`);
   }
 
   // Log the API request
