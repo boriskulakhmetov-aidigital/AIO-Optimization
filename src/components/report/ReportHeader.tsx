@@ -30,10 +30,25 @@ export function ReportHeader({ data, conceptName, onNewScan, scanId, supabase }:
   async function handleExportPDF() {
     setExporting(true);
     try {
-      const { default: html2pdf } = await import('html2pdf.js');
-      const el = document.querySelector('.aio-report');
+      const el = document.querySelector('.aio-report') as HTMLElement | null;
       if (!el) return;
 
+      // Temporarily remove overflow/height constraints so html2canvas captures ALL content
+      const scrollables = [
+        el,
+        el.closest('.app-layout') as HTMLElement | null,
+        el.closest('.app-layout')?.querySelector(':scope > *:last-child') as HTMLElement | null,
+        el.querySelector('.aio-report__content') as HTMLElement | null,
+      ].filter(Boolean) as HTMLElement[];
+
+      const saved = scrollables.map(s => s.style.cssText);
+      scrollables.forEach(s => {
+        s.style.overflow = 'visible';
+        s.style.maxHeight = 'none';
+        s.style.height = 'auto';
+      });
+
+      const { default: html2pdf } = await import('html2pdf.js');
       await html2pdf().set({
         margin: [10, 10, 10, 10],
         filename: `AIO-Report-${conceptName.replace(/[^a-zA-Z0-9]/g, '-')}.pdf`,
@@ -42,6 +57,9 @@ export function ReportHeader({ data, conceptName, onNewScan, scanId, supabase }:
         jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
         pagebreak: { mode: ['avoid-all', 'css', 'legacy'] },
       }).from(el).save();
+
+      // Restore original styles
+      scrollables.forEach((s, i) => { s.style.cssText = saved[i]; });
     } catch (err) {
       console.error('PDF export failed:', err);
     } finally {
