@@ -181,16 +181,16 @@ export async function getScanEngine(id: string) {
   return data ?? null;
 }
 
-/** Check if all engines for a scan are synthesized */
+/** Check if all engines for a scan are synthesized (errored engines count as done) */
 export async function areAllEnginesSynthesized(scanId: string): Promise<boolean> {
   const sb = getSupabase();
   const { data } = await sb
     .from('scan_engines')
-    .select('status')
+    .select('status, synthesis_data')
     .eq('scan_id', scanId);
 
   if (!data || data.length === 0) return false;
-  return data.every(e => e.status === 'complete');
+  return data.every((e: any) => e.synthesis_data != null || e.status === 'error');
 }
 
 // ── Scan Queries ─────────────────────────────────────────────────────────────
