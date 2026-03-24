@@ -170,7 +170,7 @@ export default async (req: Request) => {
     console.log(`Synthesis complete for ${engineName}: AI-SOV=${synthesis.ai_sov}%, RSI=${synthesis.recommendation_strength_index}`);
 
     // Check if all engines are done and trigger review
-    await checkAndTriggerReview(scanId, req);
+    await checkAndTriggerReview(scanId, userId);
 
   } catch (err) {
     console.error(`synthesize-engine-background error (${engineJobId}):`, err);
@@ -185,17 +185,15 @@ export default async (req: Request) => {
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
-async function checkAndTriggerReview(scanId: string, _req: Request) {
+async function checkAndTriggerReview(scanId: string, userId?: string) {
   const allSynthesized = await areAllEnginesSynthesized(scanId);
   if (!allSynthesized) return;
 
   console.log(`All engines synthesized for scan ${scanId} — creating review task`);
 
-  // Update scan status
   await updateScanStatus(scanId, 'reviewing');
   await writeJobStatus(scanId, { status: 'streaming', meta: { phase: 'reviewing' } });
 
-  // Create review record
   const reviewId = `${scanId}_review`;
   await createScanReview(reviewId, scanId);
 
@@ -206,6 +204,6 @@ async function checkAndTriggerReview(scanId: string, _req: Request) {
     app: 'aio-optimization',
     scan_id: scanId,
     task_type: 'review',
-    payload: { userId, scanConfig: {} },
+    payload: { userId: userId || null, scanConfig: {} },
   });
 }
