@@ -55,8 +55,8 @@ export default async (req: Request) => {
   const { id: taskId, scan_id: scanId, task_type: taskType, payload } = task;
   console.log(`[task-worker] Claimed task ${taskId}: ${taskType} for scan ${scanId}`);
 
-  // For quick tasks, return JSON directly
-  const quickTasks = ['check_engines_done', 'check_synthesis_done', 'dispatch_engines'];
+  // For quick tasks (< 1s), return JSON directly
+  const quickTasks = ['dispatch_engines'];
   if (quickTasks.includes(taskType)) {
     try {
       await executeTask(supabase, task);
@@ -280,6 +280,9 @@ async function handleDispatchEngines(supabase: any, scanId: string, payload: any
 }
 
 async function handleCheckEnginesDone(supabase: any, scanId: string, payload: any) {
+  // Delay before checking — prevents tight re-enqueue loop in the poller
+  await new Promise(r => setTimeout(r, 10_000));
+
   const { data: engines } = await supabase
     .from('scan_engines')
     .select('engine_id, status')
@@ -290,21 +293,13 @@ async function handleCheckEnginesDone(supabase: any, scanId: string, payload: an
   const allDone = engines.every((e: any) => e.status === 'complete' || e.status === 'error');
 
   if (!allDone) {
-    // Not done yet — re-enqueue ONLY if no pending check already exists (prevent duplication)
-    const { data: existing } = await supabase.from('pipeline_tasks')
-      .select('id')
-      .eq('scan_id', scanId)
-      .eq('task_type', 'check_engines_done')
-      .eq('status', 'pending')
-      .limit(1);
-    if (!existing?.length) {
-      await supabase.from('pipeline_tasks').insert({
-        app: 'aio-optimization',
-        scan_id: scanId,
-        task_type: 'check_engines_done',
-        payload,
-      });
-    }
+    // Not done yet — re-enqueue (delay above limits to ~5 checks per poller cycle)
+    await supabase.from('pipeline_tasks').insert({
+      app: 'aio-optimization',
+      scan_id: scanId,
+      task_type: 'check_engines_done',
+      payload,
+    });
     return;
   }
 
@@ -332,6 +327,9 @@ async function handleCheckEnginesDone(supabase: any, scanId: string, payload: an
 }
 
 async function handleCheckSynthesisDone(supabase: any, scanId: string, payload: any) {
+  // Delay before checking — prevents tight re-enqueue loop in the poller
+  await new Promise(r => setTimeout(r, 10_000));
+
   const { data: engines } = await supabase
     .from('scan_engines')
     .select('engine_id, status, synthesis_data')
@@ -342,21 +340,13 @@ async function handleCheckSynthesisDone(supabase: any, scanId: string, payload: 
   const allSynthesized = engines.every((e: any) => e.synthesis_data != null || e.status === 'error');
 
   if (!allSynthesized) {
-    // Not done yet — re-enqueue ONLY if no pending check already exists (prevent duplication)
-    const { data: existing } = await supabase.from('pipeline_tasks')
-      .select('id')
-      .eq('scan_id', scanId)
-      .eq('task_type', 'check_synthesis_done')
-      .eq('status', 'pending')
-      .limit(1);
-    if (!existing?.length) {
-      await supabase.from('pipeline_tasks').insert({
-        app: 'aio-optimization',
-        scan_id: scanId,
-        task_type: 'check_synthesis_done',
-        payload,
-      });
-    }
+    // Not done yet — re-enqueue (delay above limits to ~5 checks per poller cycle)
+    await supabase.from('pipeline_tasks').insert({
+      app: 'aio-optimization',
+      scan_id: scanId,
+      task_type: 'check_synthesis_done',
+      payload,
+    });
     return;
   }
 
