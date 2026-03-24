@@ -62,9 +62,8 @@ export default async (req: Request) => {
   const { id: taskId, scan_id: scanId, task_type: taskType, payload } = task;
   console.log(`[task-worker] Claimed task ${taskId}: ${taskType} for scan ${scanId}`);
 
-  // For quick tasks (< 1s), return JSON directly
-  const quickTasks = ['dispatch_engines'];
-  if (quickTasks.includes(taskType)) {
+  // dispatch_engines is fast (creates records, fires workers) — return JSON directly
+  if (taskType === 'dispatch_engines') {
     try {
       await executeTask(supabase, task);
       await supabase.from('pipeline_tasks').update({
@@ -111,9 +110,7 @@ async function executeTask(supabase: any, task: any) {
   switch (taskType) {
     case 'generate_queries': return handleGenerateQueries(supabase, scanId, payload);
     case 'dispatch_engines': return handleDispatchEngines(supabase, scanId, payload);
-    case 'check_engines_done': return handleCheckEnginesDone(supabase, scanId, payload);
     case 'synthesize_engine': return handleSynthesizeEngine(supabase, scanId, payload);
-    case 'check_synthesis_done': return handleCheckSynthesisDone(supabase, scanId, payload);
     case 'review': return handleReview(supabase, scanId, payload);
     default: throw new Error(`Unknown task type: ${taskType}`);
   }
@@ -271,98 +268,12 @@ async function handleDispatchEngines(supabase: any, scanId: string, payload: any
     meta: { scan_id: scanId, phase: 'scanning', query_count: queries.length, engines: availableEngines },
   });
 
-  // Enqueue a "wait_for_engines" check — the worker will poll until engines complete
-  // then enqueue synthesis tasks
-  await supabase.from('pipeline_tasks').insert({
-    app: 'aio-optimization',
-    scan_id: scanId,
-    task_type: 'check_engines_done',
-    payload: { availableEngines, engineJobIds, userId, scanConfig },
-  });
+  // No check_engines_done task needed — scan-engine-background creates
+  // synthesize_engine tasks when the last engine completes (event-driven).
 
   log.info('task-worker.dispatched', {
     function_name: 'task-worker', entity_id: scanId, user_id: userId,
     meta: { engines: availableEngines, query_count: queries.length },
-  });
-}
-
-async function handleCheckEnginesDone(supabase: any, scanId: string, payload: any) {
-  // Delay before checking — prevents tight re-enqueue loop in the poller
-  await new Promise(r => setTimeout(r, 10_000));
-
-  const { data: engines } = await supabase
-    .from('scan_engines')
-    .select('engine_id, status')
-    .eq('scan_id', scanId);
-
-  if (!engines) throw new Error('Failed to read scan_engines');
-
-  const allDone = engines.every((e: any) => e.status === 'complete' || e.status === 'error');
-
-  if (!allDone) {
-    // Not done yet — re-enqueue (delay above limits to ~5 checks per poller cycle)
-    await supabase.from('pipeline_tasks').insert({
-      app: 'aio-optimization',
-      scan_id: scanId,
-      task_type: 'check_engines_done',
-      payload,
-    });
-    return;
-  }
-
-  // All engines done — enqueue synthesis for each engine
-  await writeJobStatus(scanId, { status: 'streaming', meta: { scan_id: scanId, phase: 'synthesizing' } });
-  await updateScanStatus(scanId, 'synthesizing');
-
-  const { availableEngines, engineJobIds, userId, scanConfig } = payload;
-  for (const engineId of availableEngines) {
-    await supabase.from('pipeline_tasks').insert({
-    app: 'aio-optimization',
-      scan_id: scanId,
-      task_type: 'synthesize_engine',
-      payload: { engineId, engineJobId: engineJobIds[engineId], userId, scanConfig },
-    });
-  }
-
-  // Also enqueue a check for when all syntheses are done
-  await supabase.from('pipeline_tasks').insert({
-    app: 'aio-optimization',
-    scan_id: scanId,
-    task_type: 'check_synthesis_done',
-    payload: { userId, scanConfig },
-  });
-}
-
-async function handleCheckSynthesisDone(supabase: any, scanId: string, payload: any) {
-  // Delay before checking — prevents tight re-enqueue loop in the poller
-  await new Promise(r => setTimeout(r, 10_000));
-
-  const { data: engines } = await supabase
-    .from('scan_engines')
-    .select('engine_id, status, synthesis_data')
-    .eq('scan_id', scanId);
-
-  if (!engines) throw new Error('Failed to read scan_engines');
-
-  const allSynthesized = engines.every((e: any) => e.synthesis_data != null || e.status === 'error');
-
-  if (!allSynthesized) {
-    // Not done yet — re-enqueue (delay above limits to ~5 checks per poller cycle)
-    await supabase.from('pipeline_tasks').insert({
-      app: 'aio-optimization',
-      scan_id: scanId,
-      task_type: 'check_synthesis_done',
-      payload,
-    });
-    return;
-  }
-
-  // All synthesized — enqueue review
-  await supabase.from('pipeline_tasks').insert({
-    app: 'aio-optimization',
-    scan_id: scanId,
-    task_type: 'review',
-    payload,
   });
 }
 
@@ -437,6 +348,19 @@ async function handleSynthesizeEngine(supabase: any, scanId: string, payload: an
     function_name: 'task-worker', entity_id: engineJobId, user_id: userId,
     meta: { engine_id: engineId, ai_sov: synthesis.ai_sov },
   });
+
+  // Event-driven: check if ALL engines are now synthesized → create review task
+  const allEngines = await getScanEngines(scanId);
+  const allSynthesized = allEngines.every((e: any) => e.synthesis_data != null || e.status === 'error');
+  if (allSynthesized) {
+    console.log(`All engines synthesized for scan ${scanId} — creating review task`);
+    await supabase.from('pipeline_tasks').insert({
+      app: 'aio-optimization',
+      scan_id: scanId,
+      task_type: 'review',
+      payload: { userId, scanConfig },
+    });
+  }
 }
 
 async function handleReview(supabase: any, scanId: string, payload: any) {

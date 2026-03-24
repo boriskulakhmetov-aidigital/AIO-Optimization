@@ -9,6 +9,7 @@ import { getEngine } from './_shared/engineRegistry.js';
 import { RateLimiter, withRetry, runInBatches } from './_shared/rateLimiter.js';
 import type { EngineId } from './_shared/types.js';
 import { log } from './_shared/logger.js';
+import { createClient } from '@supabase/supabase-js';
 
 /**
  * POST /scan-engine-background  (background function)
@@ -149,12 +150,30 @@ export default async (req: Request) => {
       }
     }
 
-    // Check if all engines are done to update scan status
+    // Check if all engines are done — if so, create synthesis tasks (event-driven)
     const allEngines = await getScanEngines(scanId);
     const allDone = allEngines.every(e => e.status === 'complete' || e.status === 'error');
     if (allDone) {
-      console.log(`All engines complete for scan ${scanId} — synthesis triggered for each`);
+      console.log(`All engines complete for scan ${scanId} — creating synthesis tasks`);
       await updateScanStatus(scanId, 'synthesizing');
+      await writeJobStatus(scanId, { status: 'streaming', meta: { scan_id: scanId, phase: 'synthesizing' } });
+
+      // Create synthesize_engine tasks for each engine
+      const supabase = createClient(process.env.SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!);
+      for (const eng of allEngines) {
+        if (eng.status === 'error') continue; // skip errored engines
+        await supabase.from('pipeline_tasks').insert({
+          app: 'aio-optimization',
+          scan_id: scanId,
+          task_type: 'synthesize_engine',
+          payload: {
+            engineId: eng.engine_id,
+            engineJobId: eng.id,
+            userId: body.userId,
+            scanConfig: { concept_name: body.conceptName, concept_type: body.conceptType, concept_category: body.conceptCategory, concept_context: body.conceptContext },
+          },
+        });
+      }
     }
 
   } catch (err) {
