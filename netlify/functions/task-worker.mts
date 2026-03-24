@@ -46,7 +46,7 @@ export default async (req: Request) => {
   const supabase = getSupabase();
 
   // Claim one pending task atomically
-  const { data: tasks, error } = await supabase.rpc('claim_task');
+  const { data: tasks, error } = await supabase.rpc('claim_task', { p_app: 'aio-optimization' });
   if (error || !tasks?.length) {
     return Response.json({ status: 'idle', message: 'No pending tasks' });
   }
