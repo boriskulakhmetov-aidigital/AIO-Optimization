@@ -116,16 +116,40 @@ export default async (req: Request) => {
     updated_at: new Date().toISOString(),
   }).eq('id', jobId);
 
-  // Fire pipeline — DON'T await (it's a streaming function that runs for minutes).
-  // Just trigger the fetch and let it run independently.
+  // Fire pipeline — await the connection (headers) but not the full stream body.
+  // The pipeline is a streaming function that runs for minutes; we just need to
+  // confirm it started, then return 202 to the caller.
   const pipelineBody = JSON.stringify({ scanId, scanConfig, selectedEngines, queryCount: clampedQueryCount, userId: effectiveUserId, userEmail: effectiveEmail });
   const pipelineUrl = `${process.env.URL || 'https://aio-optimization.apps.aidigitallabs.com'}/.netlify/functions/aio-pipeline`;
 
-  fetch(pipelineUrl, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: pipelineBody,
-  }).catch(err => console.warn('[api-submit] Pipeline trigger error:', err));
+  // Use AbortController to timeout after 3s — just enough to establish the
+  // connection and confirm the pipeline started. The pipeline keeps running
+  // via its streaming response even after we abort our read.
+  const abortCtrl = new AbortController();
+  const abortTimer = setTimeout(() => abortCtrl.abort(), 3000);
+  try {
+    const pipelineRes = await fetch(pipelineUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: pipelineBody,
+      signal: abortCtrl.signal,
+    });
+    console.log(`[api-submit] Pipeline started: ${pipelineRes.status}`);
+  } catch (err: any) {
+    // AbortError is expected — means the connection was established and we moved on
+    if (err?.name !== 'AbortError') {
+      console.error('[api-submit] Pipeline trigger error:', err);
+      await supabase.from('job_status').update({
+        status: 'error',
+        error: 'Failed to start scan pipeline. Please retry.',
+        updated_at: new Date().toISOString(),
+      }).eq('id', jobId);
+    } else {
+      console.log('[api-submit] Pipeline connection established, moving on');
+    }
+  } finally {
+    clearTimeout(abortTimer);
+  }
 
   // Log the API request
   await logApiRequest(supabase as any, {
