@@ -33,6 +33,9 @@ import type { GeneratedQuery, EngineId, EngineSynthesis, CrossEngineReview, AIOR
 
 const APP_NAME = 'aio-optimization';
 
+// Netlify Functions v2: declare as streaming function for extended timeout
+export const config = { path: '/.netlify/functions/aio-pipeline' };
+
 function getSupabase() {
   return createClient(process.env.SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!);
 }
@@ -334,11 +337,14 @@ async function runPipeline({ scanId, scanConfig, selectedEngines, queryCount, us
         });
 
         const queryData = formatQueriesForSynthesis(completedQueries);
-        const synthResult = await gemini.models.generateContent({
-          model: 'gemini-3.1-pro-preview',
-          contents: [{ role: 'user', parts: [{ text: queryData }] }],
-          config: { systemInstruction: systemPrompt, maxOutputTokens: 16384, temperature: 0.3, responseMimeType: 'application/json' },
-        });
+        const synthResult = await Promise.race([
+          gemini.models.generateContent({
+            model: 'gemini-3.1-pro-preview',
+            contents: [{ role: 'user', parts: [{ text: queryData }] }],
+            config: { systemInstruction: systemPrompt, maxOutputTokens: 16384, temperature: 0.3, responseMimeType: 'application/json' },
+          }),
+          new Promise<never>((_, reject) => setTimeout(() => reject(new Error(`Synthesis timed out for ${engineId}`)), 120_000)),
+        ]);
 
         const responseText = synthResult.text ?? '';
         const synthTokens = extractGeminiTokens(synthResult);
@@ -419,18 +425,24 @@ async function runPipeline({ scanId, scanConfig, selectedEngines, queryCount, us
 
       let reviewText = '';
       let reviewResult: any = null;
+      const REVIEW_TIMEOUT = 120_000; // 2 min max per attempt
       for (let attempt = 0; attempt < 3; attempt++) {
         try {
-          const result = await gemini.models.generateContent({
-            model: 'gemini-3.1-pro-preview',
-            contents: [{ role: 'user', parts: [{ text: synthesisInput }] }],
-            config: { systemInstruction: reviewSystemPrompt, maxOutputTokens: 16384, temperature: 0.3, responseMimeType: 'application/json' },
-          });
+          send(`review attempt ${attempt + 1}`);
+          const result = await Promise.race([
+            gemini.models.generateContent({
+              model: 'gemini-3.1-pro-preview',
+              contents: [{ role: 'user', parts: [{ text: synthesisInput }] }],
+              config: { systemInstruction: reviewSystemPrompt, maxOutputTokens: 16384, temperature: 0.3, responseMimeType: 'application/json' },
+            }),
+            new Promise<never>((_, reject) => setTimeout(() => reject(new Error('Review Gemini call timed out after 2 min')), REVIEW_TIMEOUT)),
+          ]);
           reviewText = result.text ?? '';
           reviewResult = result;
           break;
         } catch (retryErr: any) {
-          if (attempt < 2 && (retryErr.message?.includes('502') || retryErr.message?.includes('503'))) {
+          console.warn(`[pipeline] Review attempt ${attempt} failed:`, retryErr.message);
+          if (attempt < 2) {
             await new Promise(r => setTimeout(r, 3000 * (attempt + 1)));
             continue;
           }
