@@ -56,5 +56,5 @@ export default async (req: Request) => {
 };
 
 export const config = {
-  schedule: '*/5 * * * *',
+  schedule: '* * * * *',  // Every minute — safe with 5s/10s delays in the loop
 };
