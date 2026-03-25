@@ -183,14 +183,22 @@ async function handleGenerateQueries(supabase: any, scanId: string, payload: any
         contents: [{ role: 'user', parts: [{ text: prompt }] }],
         config: { maxOutputTokens: 4096, temperature: 0.9 + attempt * 0.05, responseMimeType: 'application/json' },
       });
-      const responseText = result.text ?? '';
+      let responseText = result.text ?? '';
+      // Strip markdown code fences if present
+      responseText = responseText.replace(/^```(?:json)?\s*\n?/i, '').replace(/\n?```\s*$/i, '').trim();
       try {
         queries = JSON.parse(responseText);
-        if (!Array.isArray(queries)) throw new Error('not array');
+        if (!Array.isArray(queries)) {
+          // Some models return { queries: [...] }
+          if (queries && Array.isArray((queries as any).queries)) queries = (queries as any).queries;
+          else throw new Error('not array');
+        }
       } catch {
+        // Try extracting JSON array from surrounding text
         const match = responseText.match(/\[[\s\S]*\]/);
-        if (match) queries = JSON.parse(match[0]);
-        else { lastError = 'Failed to parse'; continue; }
+        if (match) {
+          try { queries = JSON.parse(match[0]); } catch { lastError = 'Failed to parse extracted array'; continue; }
+        } else { lastError = 'No JSON array found in response'; continue; }
       }
       break;
     } catch (err: any) {
