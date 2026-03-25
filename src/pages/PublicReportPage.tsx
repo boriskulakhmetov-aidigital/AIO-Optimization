@@ -1,6 +1,6 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { createClient } from '@supabase/supabase-js';
-import { BrandMark, ThemeToggle, useTheme, ReportViewer } from '@boriskulakhmetov-aidigital/design-system';
+import { BrandMark, ThemeToggle, useTheme, ReportViewer, downloadVisualPDF } from '@boriskulakhmetov-aidigital/design-system';
 import { AIOReport } from '../components/report/AIOReport';
 import type { AIOReportData } from '../lib/types';
 
@@ -14,6 +14,7 @@ export function PublicReportPage() {
   const [conceptName, setConceptName] = useState('');
   const [error, setError] = useState<string | null>(null);
   const { theme, toggle: toggleTheme } = useTheme();
+  const autoPdfTriggered = useRef(false);
 
   useEffect(() => {
     if (!token) { setError('Invalid report link.'); return; }
@@ -45,6 +46,47 @@ export function PublicReportPage() {
       })
       .catch((err: any) => setError(String(err instanceof Error ? err.message : err)));
   }, [token]);
+
+  const reportReady = !!(reportData || markdownReport);
+
+  // Auto PDF download when ?pdf=1 is in the URL
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('pdf') === '1' && reportReady && !autoPdfTriggered.current) {
+      autoPdfTriggered.current = true;
+      setTimeout(async () => {
+        try {
+          await downloadVisualPDF('.aio-report, .mr-report, .mr-layout', conceptName || 'AIO Optimization');
+        } catch (e) {
+          console.error('Auto PDF failed:', e);
+        }
+      }, 2000);
+    }
+  }, [reportReady, conceptName]);
+
+  // postMessage listener for JobStatusWidget iframe
+  useEffect(() => {
+    function handleMessage(e: MessageEvent) {
+      if (e.data?.type === 'aidl-download-pdf') {
+        downloadVisualPDF('.aio-report, .mr-report, .mr-layout', conceptName || 'AIO Optimization').catch(console.error);
+      }
+    }
+    window.addEventListener('message', handleMessage);
+    return () => window.removeEventListener('message', handleMessage);
+  }, [conceptName]);
+
+  // Report height to parent for auto-sizing iframe
+  useEffect(() => {
+    if (window.parent !== window) {
+      const reportHeight = () => {
+        window.parent.postMessage({ type: 'aidl-report-height', height: document.body.scrollHeight }, '*');
+      };
+      reportHeight();
+      const observer = new ResizeObserver(reportHeight);
+      observer.observe(document.body);
+      return () => observer.disconnect();
+    }
+  }, []);
 
   return (
     <div className="app-layout app-layout--public">
