@@ -6,7 +6,7 @@
 //   ✅ WORKING   — GEMINI_API_KEY available: gemini_free, gemini_pro, google_sge
 //   🔑 NEEDS KEY — Placeholder client returns structured mock until key is added:
 //        OPENAI_API_KEY      → chatgpt_free (gpt-5.4), chatgpt_pro (gpt-5.4-pro)
-//        ANTHROPIC_API_KEY   → claude_free, claude_pro
+//        ANTHROPIC_API_KEY   → claude, claude
 //        XAI_API_KEY         → grok_free, grok_pro
 //        PERPLEXITY_API_KEY  → perplexity
 //        TOGETHER_API_KEY    → meta_ai
