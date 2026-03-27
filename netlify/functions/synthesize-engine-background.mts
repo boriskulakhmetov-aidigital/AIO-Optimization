@@ -105,7 +105,7 @@ export default async (req: Request) => {
           contents: [{ role: 'user', parts: [{ text: queryData }] }],
           config: {
             systemInstruction: systemPrompt,
-            maxOutputTokens: 16384,
+            maxOutputTokens: 65536,
             temperature: 0.3 + attempt * 0.05,
             responseMimeType: 'application/json',
           },

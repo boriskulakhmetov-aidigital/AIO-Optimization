@@ -348,7 +348,7 @@ async function runPipeline({ scanId, scanConfig, selectedEngines, queryCount, us
           gemini.models.generateContent({
             model: 'gemini-3.1-pro-preview',
             contents: [{ role: 'user', parts: [{ text: queryData }] }],
-            config: { systemInstruction: systemPrompt, maxOutputTokens: 16384, temperature: 0.3, responseMimeType: 'application/json' },
+            config: { systemInstruction: systemPrompt, maxOutputTokens: 65536, temperature: 0.3, responseMimeType: 'application/json' },
           }),
           new Promise<never>((_, reject) => setTimeout(() => reject(new Error(`Synthesis timed out for ${engineId}`)), 120_000)),
         ]);
@@ -440,7 +440,7 @@ async function runPipeline({ scanId, scanConfig, selectedEngines, queryCount, us
             gemini.models.generateContent({
               model: 'gemini-3.1-pro-preview',
               contents: [{ role: 'user', parts: [{ text: synthesisInput }] }],
-              config: { systemInstruction: reviewSystemPrompt, maxOutputTokens: 16384, temperature: 0.3, responseMimeType: 'application/json' },
+              config: { systemInstruction: reviewSystemPrompt, maxOutputTokens: 65536, temperature: 0.3, responseMimeType: 'application/json' },
             }),
             new Promise<never>((_, reject) => setTimeout(() => reject(new Error('Review Gemini call timed out after 2 min')), REVIEW_TIMEOUT)),
           ]);

@@ -84,7 +84,7 @@ export default async (req: Request) => {
           contents: [{ role: 'user', parts: [{ text: synthesisInput }] }],
           config: {
             systemInstruction: systemPrompt,
-            maxOutputTokens: 16384,
+            maxOutputTokens: 65536,
             temperature: 0.3,
             responseMimeType: 'application/json',
           },

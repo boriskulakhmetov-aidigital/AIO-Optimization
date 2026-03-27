@@ -308,7 +308,7 @@ export default async (req: Request) => {
         const synthResult = await gemini.models.generateContent({
           model: 'gemini-3.1-pro-preview',
           contents: [{ role: 'user', parts: [{ text: queryData }] }],
-          config: { systemInstruction: systemPrompt, maxOutputTokens: 16384, temperature: 0.3, responseMimeType: 'application/json' },
+          config: { systemInstruction: systemPrompt, maxOutputTokens: 65536, temperature: 0.3, responseMimeType: 'application/json' },
         });
 
         const responseText = synthResult.text ?? '';
