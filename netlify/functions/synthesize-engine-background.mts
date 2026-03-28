@@ -226,6 +226,6 @@ async function checkAndTriggerReview(scanId: string, userId?: string, userEmail?
   });
 
   // Immediately notify task-worker (fire-and-forget — poller is backup)
-  const siteUrl = process.env.URL || 'https://aio-optimization.apps.aidigitallabs.com';
+  const siteUrl = process.env.URL || 'https://aiooptimization.apps.aidigitallabs.com';
   fetch(`${siteUrl}/.netlify/functions/task-worker`, { method: 'POST' }).catch(() => {});
 }

@@ -1,6 +1,6 @@
 # AIO Optimization
 
-> **URL:** https://aio-optimization.apps.aidigitallabs.com
+> **URL:** https://aiooptimization.apps.aidigitallabs.com
 > **Repo:** `boriskulakhmetov-aidigital/AIO-Optimization`
 
 AIO (AI Optimization) analyzes how a product, brand, or concept is recommended across consumer AI engines (ChatGPT, Gemini, Claude, Grok, Perplexity, Copilot, Meta AI, Google SGE). It generates diverse search queries, runs them against selected engines, synthesizes per-engine results, performs cross-engine review, and produces a comprehensive report with KPIs like AI Share of Voice, recommendation strength, and sentiment scores.

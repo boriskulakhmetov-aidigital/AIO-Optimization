@@ -8,7 +8,7 @@
  */
 
 export default async (req: Request) => {
-  const siteUrl = process.env.URL || 'https://aio-optimization.apps.aidigitallabs.com';
+  const siteUrl = process.env.URL || 'https://aiooptimization.apps.aidigitallabs.com';
   let processed = 0;
   const deadline = Date.now() + 55_000;
 

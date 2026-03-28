@@ -5,7 +5,7 @@ import type { Context } from '@netlify/functions';
 
 const APP = 'aio-optimization';
 const TABLE = 'scans';
-const REPORT_BASE_URL = 'https://aio-optimization.apps.aidigitallabs.com';
+const REPORT_BASE_URL = 'https://aiooptimization.apps.aidigitallabs.com';
 
 export default async (req: Request, _context: Context) => {
   if (req.method !== 'POST') {

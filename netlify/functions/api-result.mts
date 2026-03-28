@@ -151,7 +151,7 @@ export default async (req: Request) => {
     themeSlug = org?.theme_slug || '';
   }
 
-  const baseUrl = 'https://aio-optimization.apps.aidigitallabs.com';
+  const baseUrl = 'https://aiooptimization.apps.aidigitallabs.com';
   const reportUrl = `${baseUrl}/r/${shareToken}${themeSlug ? '?theme=' + themeSlug : ''}`;
 
   // Log the API request

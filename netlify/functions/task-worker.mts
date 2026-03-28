@@ -146,7 +146,7 @@ async function handleTaskError(supabase: any, task: any, err: any) {
 // ── Dispatch to background functions (long Gemini calls need >26s) ────────────
 
 async function dispatchToBackground(scanId: string, payload: any, functionName: string) {
-  const siteUrl = process.env.URL || 'https://aio-optimization.apps.aidigitallabs.com';
+  const siteUrl = process.env.URL || 'https://aiooptimization.apps.aidigitallabs.com';
   const body: Record<string, unknown> = { scanId, userId: payload.userId, userEmail: payload.userEmail || null };
 
   // synthesize-engine-background needs engineJobId
@@ -250,7 +250,7 @@ async function handleGenerateQueries(supabase: any, scanId: string, payload: any
   });
 
   // Immediately notify task-worker (fire-and-forget — poller is backup)
-  const siteUrl = process.env.URL || 'https://aio-optimization.apps.aidigitallabs.com';
+  const siteUrl = process.env.URL || 'https://aiooptimization.apps.aidigitallabs.com';
   fetch(`${siteUrl}/.netlify/functions/task-worker`, { method: 'POST' }).catch(() => {});
 }
 
@@ -295,7 +295,7 @@ async function handleDispatchEngines(supabase: any, scanId: string, payload: any
   await updateScanStatus(scanId, 'scanning');
 
   // Fire engine workers (these work fine — triggered from a regular function)
-  const siteUrl = process.env.URL || 'https://aio-optimization.apps.aidigitallabs.com';
+  const siteUrl = process.env.URL || 'https://aiooptimization.apps.aidigitallabs.com';
   await Promise.all(availableEngines.map(async (engineId) => {
     try {
       await fetch(`${siteUrl}/.netlify/functions/scan-engine-background`, {
