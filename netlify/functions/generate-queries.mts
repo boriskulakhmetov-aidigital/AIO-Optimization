@@ -3,6 +3,7 @@ import { requireAuthOrEmbed } from './_shared/auth.js';
 import { buildQueryGeneratorPrompt } from './_shared/queryGeneratorPrompt.js';
 import { log } from './_shared/logger.js';
 import type { ConceptType, GeneratedQuery, EngineId } from './_shared/types.js';
+import { QUERY_COUNT_MIN, QUERY_COUNT_MAX, QUERY_COUNT_DEFAULT } from './_shared/constants.js';
 
 /**
  * POST /generate-queries
@@ -30,7 +31,7 @@ export default async (req: Request) => {
       concept_category,
       concept_context,
       engines,
-      query_count = 50,
+      query_count = QUERY_COUNT_DEFAULT,
     } = body as {
       concept_type: ConceptType;
       concept_name: string;
@@ -47,7 +48,7 @@ export default async (req: Request) => {
       return Response.json({ error: 'At least one engine must be selected' }, { status: 400 });
     }
 
-    const clampedCount = Math.max(20, Math.min(80, query_count));
+    const clampedCount = Math.max(QUERY_COUNT_MIN, Math.min(QUERY_COUNT_MAX, query_count));
 
     log.info('generate-queries.start', {
       function_name: 'generate-queries',

@@ -30,6 +30,7 @@ import { extractGeminiTokens } from '@boriskulakhmetov-aidigital/design-system/u
 import { repairJson } from './_shared/repairJson.js';
 import { trackTokens } from './_shared/access.js';
 import type { GeneratedQuery, EngineId, EngineSynthesis, CrossEngineReview, AIOReportData, QueryLogEntry } from './_shared/types.js';
+import { QUERY_COUNT_MIN, QUERY_COUNT_MAX, QUERY_COUNT_DEFAULT } from './_shared/constants.js';
 
 const APP_NAME = 'aio-optimization';
 
@@ -103,7 +104,7 @@ async function runPipeline({ scanId, scanConfig, selectedEngines, queryCount, us
     // (Previously called generate-queries as a separate function, which hit the
     //  26s Netlify function timeout on function-to-function calls. Now runs inline
     //  within the 15-min background function timeout.)
-    const clampedCount = Math.max(20, Math.min(80, queryCount || 50));
+    const clampedCount = Math.max(QUERY_COUNT_MIN, Math.min(QUERY_COUNT_MAX, queryCount || QUERY_COUNT_DEFAULT));
     const prompt = buildQueryGeneratorPrompt({
       conceptType: scanConfig.concept_type,
       conceptName: scanConfig.concept_name,
