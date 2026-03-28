@@ -196,13 +196,24 @@ async function handleGenerateQueries(supabase: any, scanId: string, payload: any
         new Promise<never>((_, reject) => setTimeout(() => reject(new Error('Gemini generateContent timed out after 30s')), 30_000)),
       ]);
       let responseText = result.text ?? '';
-      // Strip markdown code fences if present
-      responseText = responseText.replace(/^```(?:json)?\s*\n?/i, '').replace(/\n?```\s*$/i, '').trim();
+      console.log(`[generate-queries] Attempt ${attempt + 1}: response length ${responseText.length}, starts with: "${responseText.slice(0, 50)}"`);
+      // Strip markdown code fences (```json ... ``` or ``` ... ```)
+      responseText = responseText.replace(/^```(?:json)?\s*\n?/gim, '').replace(/\n?```\s*$/gim, '').trim();
+      // Strip any text before the first [ (Gemini sometimes adds preamble)
+      const firstBracket = responseText.indexOf('[');
+      if (firstBracket > 0 && firstBracket < 200) {
+        responseText = responseText.slice(firstBracket);
+      }
+      // Strip any text after the last ] (Gemini sometimes adds postamble)
+      const lastBracket = responseText.lastIndexOf(']');
+      if (lastBracket > 0 && lastBracket < responseText.length - 1) {
+        responseText = responseText.slice(0, lastBracket + 1);
+      }
       try {
         queries = JSON.parse(responseText);
         if (!Array.isArray(queries)) {
-          // Some models return { queries: [...] }
           if (queries && Array.isArray((queries as any).queries)) queries = (queries as any).queries;
+          else if (queries && Array.isArray((queries as any).data)) queries = (queries as any).data;
           else throw new Error('not array');
         }
       } catch {

@@ -94,14 +94,24 @@ export default async (req: Request) => {
         ]);
         });
 
-        const responseText = result.text ?? '';
+        let responseText = result.text ?? '';
+        // Strip markdown fences + preamble/postamble text around JSON array
+        responseText = responseText.replace(/^```(?:json)?\s*\n?/gim, '').replace(/\n?```\s*$/gim, '').trim();
+        const firstBracket = responseText.indexOf('[');
+        if (firstBracket > 0 && firstBracket < 200) responseText = responseText.slice(firstBracket);
+        const lastBracket = responseText.lastIndexOf(']');
+        if (lastBracket > 0 && lastBracket < responseText.length - 1) responseText = responseText.slice(0, lastBracket + 1);
         try {
           queries = JSON.parse(responseText);
-          if (!Array.isArray(queries)) throw new Error('Response is not an array');
+          if (!Array.isArray(queries)) {
+            if (queries && Array.isArray((queries as any).queries)) queries = (queries as any).queries;
+            else if (queries && Array.isArray((queries as any).data)) queries = (queries as any).data;
+            else throw new Error('Response is not an array');
+          }
         } catch {
           const match = responseText.match(/\[[\s\S]*\]/);
           if (match) {
-            queries = JSON.parse(match[0]);
+            try { queries = JSON.parse(match[0]); } catch { lastError = 'Failed to parse extracted array'; continue; }
           } else {
             lastError = 'Failed to parse query generation response';
             continue;
