@@ -79,14 +79,19 @@ export default async (req: Request) => {
 
     for (let attempt = 0; attempt < 3; attempt++) {
       try {
-        const result = await ai.models.generateContent({
-          model: 'gemini-3-flash-preview',
-          contents: [{ role: 'user', parts: [{ text: prompt }] }],
-          config: {
-            maxOutputTokens: 4096,
-            temperature: 0.9 + attempt * 0.05,
-            responseMimeType: 'application/json',
-          },
+        // 30s timeout — Gemini sometimes hangs on generateContent
+        const result = await Promise.race([
+          ai.models.generateContent({
+            model: 'gemini-3-flash-preview',
+            contents: [{ role: 'user', parts: [{ text: prompt }] }],
+            config: {
+              maxOutputTokens: 4096,
+              temperature: 0.9 + attempt * 0.05,
+              responseMimeType: 'application/json',
+            },
+          }),
+          new Promise<never>((_, reject) => setTimeout(() => reject(new Error('Gemini timed out after 30s')), 30_000)),
+        ]);
         });
 
         const responseText = result.text ?? '';

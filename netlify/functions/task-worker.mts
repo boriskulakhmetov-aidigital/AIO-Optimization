@@ -46,6 +46,14 @@ export default async (req: Request) => {
 
   const supabase = getSupabase();
 
+  // Reset stale tasks: if a task has been 'running' for > 5 min, it crashed — reset to pending
+  const staleThreshold = new Date(Date.now() - 5 * 60 * 1000).toISOString();
+  await supabase.from('pipeline_tasks')
+    .update({ status: 'pending', updated_at: new Date().toISOString() })
+    .eq('status', 'running')
+    .lt('updated_at', staleThreshold)
+    .eq('app', 'aio-optimization');
+
   // Claim one pending task atomically
   const { data: tasks, error } = await supabase.rpc('claim_task', { p_app: 'aio-optimization' });
   if (error || !tasks?.length) {
@@ -178,11 +186,15 @@ async function handleGenerateQueries(supabase: any, scanId: string, payload: any
 
   for (let attempt = 0; attempt < 3; attempt++) {
     try {
-      const result = await ai.models.generateContent({
-        model: 'gemini-3-flash-preview',
-        contents: [{ role: 'user', parts: [{ text: prompt }] }],
-        config: { maxOutputTokens: 4096, temperature: 0.9 + attempt * 0.05, responseMimeType: 'application/json' },
-      });
+      // 30s timeout — Gemini sometimes hangs on generateContent
+      const result = await Promise.race([
+        ai.models.generateContent({
+          model: 'gemini-3-flash-preview',
+          contents: [{ role: 'user', parts: [{ text: prompt }] }],
+          config: { maxOutputTokens: 4096, temperature: 0.9 + attempt * 0.05, responseMimeType: 'application/json' },
+        }),
+        new Promise<never>((_, reject) => setTimeout(() => reject(new Error('Gemini generateContent timed out after 30s')), 30_000)),
+      ]);
       let responseText = result.text ?? '';
       // Strip markdown code fences if present
       responseText = responseText.replace(/^```(?:json)?\s*\n?/i, '').replace(/\n?```\s*$/i, '').trim();
