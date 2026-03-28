@@ -2,10 +2,11 @@
  * Server-side PDF generation via HTML2PDFAPI — AIO Optimization
  */
 import type { Context } from '@netlify/functions';
+import { getAppUrl } from '@boriskulakhmetov-aidigital/design-system/utils';
 
 const APP = 'aio-optimization';
 const TABLE = 'scans';
-const REPORT_BASE_URL = 'https://aiooptimization.apps.aidigitallabs.com';
+const REPORT_BASE_URL = getAppUrl('aio-optimization', { serverUrl: process.env.URL });
 
 export default async (req: Request, _context: Context) => {
   if (req.method !== 'POST') {

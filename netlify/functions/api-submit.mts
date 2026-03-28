@@ -8,6 +8,7 @@
  */
 import { createClient } from '@supabase/supabase-js';
 import { validateApiKey, logApiRequest, apiKeyErrorResponse } from '@boriskulakhmetov-aidigital/design-system/server';
+import { getAppUrl } from '@boriskulakhmetov-aidigital/design-system/utils';
 
 const APP_NAME = 'aio-optimization';
 
@@ -130,7 +131,7 @@ export default async (req: Request) => {
   } else {
     console.log(`[api-submit] Task enqueued: generate_queries for scan ${scanId}`);
     // Immediately notify task-worker (fire-and-forget — poller is backup)
-    const siteUrl = process.env.URL || 'https://aiooptimization.apps.aidigitallabs.com';
+    const siteUrl = getAppUrl('aio-optimization', { serverUrl: process.env.URL });
     fetch(`${siteUrl}/.netlify/functions/task-worker`, { method: 'POST' }).catch(() => {});
   }
 

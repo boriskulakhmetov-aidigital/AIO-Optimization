@@ -8,6 +8,7 @@
  * Returns: { job_id, status: 'pending' }
  */
 import { createClient } from '@supabase/supabase-js';
+import { getAppUrl } from '@boriskulakhmetov-aidigital/design-system/utils';
 
 const APP_NAME = 'aio-optimization';
 const DEFAULT_ENGINES = ['gemini_free', 'gemini_pro', 'google_sge', 'chatgpt_free', 'chatgpt_pro'];
@@ -110,7 +111,7 @@ export default async (req: Request) => {
   }
 
   // Immediately notify task-worker (fire-and-forget — poller is backup)
-  const siteUrl = process.env.URL || 'https://aiooptimization.apps.aidigitallabs.com';
+  const siteUrl = getAppUrl('aio-optimization', { serverUrl: process.env.URL });
   fetch(`${siteUrl}/.netlify/functions/task-worker`, { method: 'POST' }).catch(() => {});
 
   console.log(`[embed-submit] Task enqueued: generate_queries for scan ${scanId}`);

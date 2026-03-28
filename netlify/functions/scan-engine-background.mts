@@ -10,6 +10,7 @@ import { RateLimiter, withRetry, runInBatches } from './_shared/rateLimiter.js';
 import type { EngineId } from './_shared/types.js';
 import { log } from './_shared/logger.js';
 import { createClient } from '@supabase/supabase-js';
+import { getAppUrl } from '@boriskulakhmetov-aidigital/design-system/utils';
 
 /**
  * POST /scan-engine-background  (background function)
@@ -172,7 +173,7 @@ export default async (req: Request) => {
       }
 
       // Immediately notify task-worker (fire-and-forget — poller is backup)
-      const siteUrl = process.env.URL || 'https://aiooptimization.apps.aidigitallabs.com';
+      const siteUrl = getAppUrl('aio-optimization', { serverUrl: process.env.URL });
       fetch(`${siteUrl}/.netlify/functions/task-worker`, { method: 'POST' }).catch(() => {});
     }
 

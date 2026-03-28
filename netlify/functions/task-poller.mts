@@ -7,8 +7,10 @@
  * No webhook triggers, no function-to-function calls.
  */
 
+import { getAppUrl } from '@boriskulakhmetov-aidigital/design-system/utils';
+
 export default async (req: Request) => {
-  const siteUrl = process.env.URL || 'https://aiooptimization.apps.aidigitallabs.com';
+  const siteUrl = getAppUrl('aio-optimization', { serverUrl: process.env.URL });
   let processed = 0;
   const deadline = Date.now() + 55_000;
 

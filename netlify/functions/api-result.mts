@@ -8,6 +8,7 @@
  */
 import { createClient } from '@supabase/supabase-js';
 import { validateApiKey, logApiRequest, apiKeyErrorResponse } from '@boriskulakhmetov-aidigital/design-system/server';
+import { getAppUrl } from '@boriskulakhmetov-aidigital/design-system/utils';
 
 const APP_NAME = 'aio-optimization';
 
@@ -151,7 +152,7 @@ export default async (req: Request) => {
     themeSlug = org?.theme_slug || '';
   }
 
-  const baseUrl = 'https://aiooptimization.apps.aidigitallabs.com';
+  const baseUrl = getAppUrl('aio-optimization', { serverUrl: process.env.URL });
   const reportUrl = `${baseUrl}/r/${shareToken}${themeSlug ? '?theme=' + themeSlug : ''}`;
 
   // Log the API request

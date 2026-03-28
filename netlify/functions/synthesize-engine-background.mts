@@ -10,6 +10,7 @@ import { getEngineName } from './_shared/engineRegistry.js';
 import { buildSynthesizerPrompt, formatQueriesForSynthesis } from './_shared/synthesizerPrompt.js';
 import type { EngineId, EngineSynthesis } from './_shared/types.js';
 import { log } from './_shared/logger.js';
+import { getAppUrl } from '@boriskulakhmetov-aidigital/design-system/utils';
 import { trackTokens } from './_shared/access.js';
 import { extractGeminiTokens } from '@boriskulakhmetov-aidigital/design-system/utils';
 import { repairJson } from './_shared/repairJson.js';
@@ -226,6 +227,6 @@ async function checkAndTriggerReview(scanId: string, userId?: string, userEmail?
   });
 
   // Immediately notify task-worker (fire-and-forget — poller is backup)
-  const siteUrl = process.env.URL || 'https://aiooptimization.apps.aidigitallabs.com';
+  const siteUrl = getAppUrl('aio-optimization', { serverUrl: process.env.URL });
   fetch(`${siteUrl}/.netlify/functions/task-worker`, { method: 'POST' }).catch(() => {});
 }
