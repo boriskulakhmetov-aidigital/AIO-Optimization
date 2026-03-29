@@ -1,10 +1,11 @@
 import { useEffect } from 'react';
 import { HelpPage, applyTheme, resolveTheme } from '@boriskulakhmetov-aidigital/design-system';
+import { getAppUrl } from '@boriskulakhmetov-aidigital/design-system/utils';
 import '@boriskulakhmetov-aidigital/design-system/style.css';
 
 const GUIDE = `# AIO Optimization — User Guide
 
-**Tool:** [AIO Optimization](https://aiooptimization.apps.aidigitallabs.com)
+**Tool:** [AIO Optimization](${getAppUrl('aio-optimization')})
 
 AIO (AI Optimization) audits how AI search engines perceive your brand. It queries tools like ChatGPT, Gemini, Perplexity, and others to see what they say about you — and gives you a clear plan to improve your AI search visibility.
 
