@@ -16,7 +16,7 @@ AIO (AI Optimization) analyzes how a product, brand, or concept is recommended a
 | Backend | Netlify Functions (serverless) |
 | Hosting | Netlify |
 | PDF Export | html2pdf.js |
-| Design System | @boriskulakhmetov-aidigital/design-system ^7.4.0 |
+| Design System | @boriskulakhmetov-aidigital/design-system ^7.30.6 |
 
 ## Architecture
 
