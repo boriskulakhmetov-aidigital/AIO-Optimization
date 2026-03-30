@@ -1,5 +1,5 @@
 import type { ActionItem } from '../../lib/types';
-import { ActionCard, PriorityBadge, SectionDivider } from '@boriskulakhmetov-aidigital/design-system';
+import { ActionCard, PriorityBadge, SectionDivider } from '@AiDigital-com/design-system';
 
 interface ActionItemsProps {
   items: ActionItem[];

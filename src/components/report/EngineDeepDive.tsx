@@ -1,6 +1,6 @@
 import type { EngineSynthesis, EngineId } from '../../lib/types';
 import { ENGINE_META, getEngineColor } from '../../lib/engineMeta';
-import { KpiTile, ReportTable, CollapsibleRow, SectionDivider } from '@boriskulakhmetov-aidigital/design-system';
+import { KpiTile, ReportTable, CollapsibleRow, SectionDivider } from '@AiDigital-com/design-system';
 
 interface EngineDeepDiveProps {
   syntheses: EngineSynthesis[];

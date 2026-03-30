@@ -1,6 +1,6 @@
 import type { CrossEngineReview, EngineId } from '../../lib/types';
 import { ENGINE_META, getEngineColor } from '../../lib/engineMeta';
-import { KpiTile, ProgressBar, SectionDivider } from '@boriskulakhmetov-aidigital/design-system';
+import { KpiTile, ProgressBar, SectionDivider } from '@AiDigital-com/design-system';
 
 interface EngineAwarenessProps {
   review: CrossEngineReview;

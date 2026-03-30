@@ -3,11 +3,11 @@ import {
   EmbedLayout, ChatPanel,
   applyTheme, resolveTheme, aiLabsTheme,
   useScanProgress, useJobStatus, ConnectedShareBar,
-} from '@boriskulakhmetov-aidigital/design-system'
-import type { SupabaseClient } from '@boriskulakhmetov-aidigital/design-system'
-import '@boriskulakhmetov-aidigital/design-system/style.css'
+} from '@AiDigital-com/design-system'
+import type { SupabaseClient } from '@AiDigital-com/design-system'
+import '@AiDigital-com/design-system/style.css'
 import { createClient } from '@supabase/supabase-js'
-import { parseSSEStream } from '@boriskulakhmetov-aidigital/design-system'
+import { parseSSEStream } from '@AiDigital-com/design-system'
 import type { AppPhase, AIOReportData } from '../lib/types'
 import { ScanDashboard } from '../components/ScanDashboard'
 import { AIOReport } from '../components/report/AIOReport'

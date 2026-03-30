@@ -10,7 +10,7 @@ import { RateLimiter, withRetry, runInBatches } from './_shared/rateLimiter.js';
 import type { EngineId } from './_shared/types.js';
 import { log } from './_shared/logger.js';
 import { createClient } from '@supabase/supabase-js';
-import { getAppUrl } from '@boriskulakhmetov-aidigital/design-system/utils';
+import { getAppUrl } from '@AiDigital-com/design-system/utils';
 
 /**
  * POST /scan-engine-background  (background function)

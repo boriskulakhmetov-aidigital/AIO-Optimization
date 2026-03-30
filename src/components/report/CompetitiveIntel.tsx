@@ -1,6 +1,6 @@
 import type { CrossEngineReview, EngineId } from '../../lib/types';
 import { ENGINE_META } from '../../lib/engineMeta';
-import { KpiTile, SectionDivider } from '@boriskulakhmetov-aidigital/design-system';
+import { KpiTile, SectionDivider } from '@AiDigital-com/design-system';
 
 interface CompetitiveIntelProps {
   review: CrossEngineReview;

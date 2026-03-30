@@ -1,7 +1,7 @@
 import { useState, useRef, useCallback } from 'react';
 import { useAuth } from '@clerk/react';
 import type { ChatMessage } from '../lib/types';
-import { parseSSEStream } from '@boriskulakhmetov-aidigital/design-system';
+import { parseSSEStream } from '@AiDigital-com/design-system';
 
 export interface ScanDispatchConfig {
   concept_type: string;

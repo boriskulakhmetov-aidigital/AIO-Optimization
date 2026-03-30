@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import type { AIOReportData } from '../../lib/types';
-import type { SupabaseClient } from '@boriskulakhmetov-aidigital/design-system';
+import type { SupabaseClient } from '@AiDigital-com/design-system';
 import { ReportHeader } from './ReportHeader';
 import { KPIOverview } from './KPIOverview';
 import { EngineAwareness } from './EngineAwareness';

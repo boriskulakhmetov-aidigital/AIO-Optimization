@@ -1,7 +1,7 @@
 import type { AIOReportData } from '../../lib/types';
 import { ENGINE_META, getEngineColor } from '../../lib/engineMeta';
 import type { EngineId } from '../../lib/types';
-import { KpiTile, ProgressBar, SectionDivider } from '@boriskulakhmetov-aidigital/design-system';
+import { KpiTile, ProgressBar, SectionDivider } from '@AiDigital-com/design-system';
 
 interface KPIOverviewProps {
   data: AIOReportData;

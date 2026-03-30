@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { createClient } from '@supabase/supabase-js';
-import { BrandMark, ThemeToggle, useTheme, ReportViewer, downloadVisualPDF } from '@boriskulakhmetov-aidigital/design-system';
+import { BrandMark, ThemeToggle, useTheme, ReportViewer, downloadVisualPDF } from '@AiDigital-com/design-system';
 import { AIOReport } from '../components/report/AIOReport';
 import type { AIOReportData } from '../lib/types';
 

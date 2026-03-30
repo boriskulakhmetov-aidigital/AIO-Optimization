@@ -25,7 +25,7 @@ import {
 import { getEngine } from './_shared/engineRegistry.js';
 import { log } from './_shared/logger.js';
 import { trackTokens } from './_shared/access.js';
-import { extractGeminiTokens, getAppUrl } from '@boriskulakhmetov-aidigital/design-system/utils';
+import { extractGeminiTokens, getAppUrl } from '@AiDigital-com/design-system/utils';
 import type { GeneratedQuery, EngineId } from './_shared/types.js';
 
 function getSupabase() {

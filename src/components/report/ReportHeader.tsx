@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import type { AIOReportData } from '../../lib/types';
-import type { SupabaseClient } from '@boriskulakhmetov-aidigital/design-system';
-import { PageHeader, ConnectedShareBar, downloadVisualPDF } from '@boriskulakhmetov-aidigital/design-system';
+import type { SupabaseClient } from '@AiDigital-com/design-system';
+import { PageHeader, ConnectedShareBar, downloadVisualPDF } from '@AiDigital-com/design-system';
 
 interface ReportHeaderProps {
   data: AIOReportData;

@@ -8,7 +8,7 @@
  * Returns: { job_id, status: 'pending' }
  */
 import { createClient } from '@supabase/supabase-js';
-import { getAppUrl } from '@boriskulakhmetov-aidigital/design-system/utils';
+import { getAppUrl } from '@AiDigital-com/design-system/utils';
 
 const APP_NAME = 'aio-optimization';
 const DEFAULT_ENGINES = ['gemini_free', 'gemini_pro', 'google_sge', 'chatgpt_free', 'chatgpt_pro'];

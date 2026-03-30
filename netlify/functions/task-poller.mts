@@ -7,7 +7,7 @@
  * No webhook triggers, no function-to-function calls.
  */
 
-import { getAppUrl } from '@boriskulakhmetov-aidigital/design-system/utils';
+import { getAppUrl } from '@AiDigital-com/design-system/utils';
 
 export default async (req: Request) => {
   const siteUrl = getAppUrl('aio-optimization', { serverUrl: process.env.URL });
