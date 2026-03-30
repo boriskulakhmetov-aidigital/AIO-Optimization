@@ -121,6 +121,7 @@ export function PublicReportPage() {
               data={reportData}
               conceptName={conceptName}
               onNewScan={() => { window.location.href = '/'; }}
+              isPrintMode={new URLSearchParams(window.location.search).get('pdf-mode') === '1'}
             />
           )}
           {!reportData && markdownReport && (

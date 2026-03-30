@@ -16,9 +16,10 @@ interface AIOReportProps {
   onNewScan: () => void;
   scanId?: string | null;
   supabase?: SupabaseClient | null;
+  isPrintMode?: boolean;
 }
 
-export function AIOReport({ data, conceptName, onNewScan, scanId, supabase }: AIOReportProps) {
+export function AIOReport({ data, conceptName, onNewScan, scanId, supabase, isPrintMode = false }: AIOReportProps) {
   const [activePage, setActivePage] = useState<ReportPage>('overview');
   const [selectedEngine, setSelectedEngine] = useState<string | null>(null);
 
@@ -33,6 +34,21 @@ export function AIOReport({ data, conceptName, onNewScan, scanId, supabase }: AI
   function handleEngineClick(engineId: string) {
     setSelectedEngine(engineId);
     setActivePage('deep-dive');
+  }
+
+  if (isPrintMode) {
+    return (
+      <div className="aio-report mr-layout--print">
+        <ReportHeader data={data} conceptName={conceptName} onNewScan={onNewScan} scanId={scanId ?? null} supabase={supabase ?? null} />
+        <div className="mr-content">
+          <div className="mr-print-page"><KPIOverview data={data} onEngineClick={() => {}} /></div>
+          <div className="mr-print-page"><EngineAwareness review={data.cross_engine_review} onEngineClick={() => {}} /></div>
+          <div className="mr-print-page"><CompetitiveIntel review={data.cross_engine_review} /></div>
+          <div className="mr-print-page"><ActionItems items={data.cross_engine_review.action_items} /></div>
+          <div className="mr-print-page"><EngineDeepDive syntheses={data.engine_syntheses} selectedEngine={null} onSelect={() => {}} /></div>
+        </div>
+      </div>
+    );
   }
 
   return (
