@@ -1,18 +1,15 @@
 // ── Unified Engine Client ────────────────────────────────────────────────────
 // Routes queries to the correct AI provider based on engine ID.
-// Each provider implements a simple interface: send a query, get a text response.
+// Uses the DS LLM wrapper (`createLLMProvider`) for all providers.
 //
-// KEY STATUS:
-//   ✅ WORKING   — GEMINI_API_KEY available: gemini_free, gemini_pro, google_sge
-//   🔑 NEEDS KEY — Placeholder client returns structured mock until key is added:
-//        OPENAI_API_KEY      → chatgpt_free (gpt-5.4), chatgpt_pro (gpt-5.4-pro)
-//        ANTHROPIC_API_KEY   → claude, claude
-//        XAI_API_KEY         → grok_free, grok_pro
-//        PERPLEXITY_API_KEY  → perplexity
-//        TOGETHER_API_KEY    → meta_ai
-//        AZURE_OPENAI_API_KEY → copilot (disabled)
+// google_search (Gemini + search grounding) uses GeminiProvider directly
+// because the generic LLM interface doesn't expose search tool config.
 
-import { GoogleGenAI } from '@google/genai';
+import {
+  createLLMProvider,
+  GeminiProvider,
+  OpenAIProvider,
+} from '@AiDigital-com/design-system/server';
 import { getEngine } from './engineRegistry.js';
 import type { EngineId } from './types.js';
 
@@ -21,6 +18,13 @@ export interface EngineResponse {
   ok: boolean;
   error?: string;
 }
+
+// ── Provider base URL map for OpenAI-compatible providers ────────────────────
+
+const OPENAI_BASE_URLS: Record<string, string> = {
+  perplexity: 'https://api.perplexity.ai',
+  together: 'https://api.together.xyz/v1',
+};
 
 // ── Main entry point ─────────────────────────────────────────────────────────
 
@@ -40,85 +44,66 @@ export async function queryEngine(
     return placeholderResponse(engineId, engine.apiKeyEnvVar, queryText);
   }
 
-  switch (engine.provider) {
-    case 'google':
-      return queryGemini(apiKey, engine.model, queryText);
-
-    case 'google_search':
-      return queryGeminiWithSearch(apiKey, engine.model, queryText);
-
-    case 'openai':
-      // OpenAI-compatible API (ChatGPT free/pro, Copilot via Azure)
-      return queryOpenAICompatible({
-        apiKey,
-        baseUrl: engine.id === 'copilot'
-          ? (process.env.AZURE_OPENAI_ENDPOINT ?? 'https://api.openai.com/v1')
-          : 'https://api.openai.com/v1',
-        model: engine.model,
-        queryText,
-        engineId,
-        useMaxCompletionTokens: engine.model.startsWith('gpt-5'),
-      });
-
-    case 'anthropic':
-      return queryAnthropic(apiKey, engine.model, queryText);
-
-    case 'xai':
-      // xAI Grok uses OpenAI-compatible API
-      return queryOpenAICompatible({
-        apiKey,
-        baseUrl: 'https://api.x.ai/v1',
-        model: engine.model,
-        queryText,
-        engineId,
-      });
-
-    case 'perplexity':
-      // Perplexity uses OpenAI-compatible API
-      return queryOpenAICompatible({
-        apiKey,
-        baseUrl: 'https://api.perplexity.ai',
-        model: engine.model,
-        queryText,
-        engineId,
-      });
-
-    case 'together':
-      // Together AI (Meta Llama) uses OpenAI-compatible API
-      return queryOpenAICompatible({
-        apiKey,
-        baseUrl: 'https://api.together.xyz/v1',
-        model: engine.model,
-        queryText,
-        engineId,
-      });
-
-    default:
-      return { text: '', ok: false, error: `Unknown provider: ${engine.provider}` };
-  }
-}
-
-// ── Google Gemini (WORKING — uses existing GEMINI_API_KEY) ───────────────────
-
-async function queryGemini(
-  apiKey: string,
-  model: string,
-  queryText: string,
-): Promise<EngineResponse> {
   try {
-    const ai = new GoogleGenAI({ apiKey });
-    const result = await ai.models.generateContent({
-      model,
-      contents: [{ role: 'user', parts: [{ text: queryText }] }],
-      config: { maxOutputTokens: 2048 },
-    });
-    return { text: result.text ?? '', ok: true };
+    switch (engine.provider) {
+      case 'google':
+      case 'anthropic':
+      case 'xai': {
+        // These map directly to DS provider names
+        const providerName = engine.provider === 'google' ? 'gemini' : engine.provider === 'anthropic' ? 'claude' : engine.provider;
+        const llm = createLLMProvider(providerName, apiKey, engine.model);
+        const { text } = await llm.generateContent({
+          system: 'You are a helpful AI assistant. Answer the query directly.',
+          userParts: [{ text: queryText }],
+          maxTokens: 2048,
+        });
+        return { text, ok: true };
+      }
+
+      case 'google_search': {
+        // Gemini with search grounding — uses GeminiProvider directly
+        // because the generic interface doesn't expose tools config
+        return queryGeminiWithSearch(apiKey, engine.model, queryText);
+      }
+
+      case 'openai': {
+        // OpenAI-native (ChatGPT, Copilot)
+        const baseUrl = engine.id === 'copilot'
+          ? (process.env.AZURE_OPENAI_ENDPOINT ?? 'https://api.openai.com/v1')
+          : 'https://api.openai.com/v1';
+        const llm = new OpenAIProvider(apiKey, engine.model, baseUrl);
+        const { text } = await llm.generateContent({
+          system: 'You are a helpful AI assistant. Answer the query directly.',
+          userParts: [{ text: queryText }],
+          maxTokens: 2048,
+        });
+        return { text, ok: true };
+      }
+
+      case 'perplexity':
+      case 'together': {
+        // OpenAI-compatible APIs with custom base URLs
+        const baseUrl = OPENAI_BASE_URLS[engine.provider];
+        const llm = new OpenAIProvider(apiKey, engine.model, baseUrl);
+        const { text } = await llm.generateContent({
+          system: 'You are a helpful AI assistant. Answer the query directly.',
+          userParts: [{ text: queryText }],
+          maxTokens: 2048,
+        });
+        return { text, ok: true };
+      }
+
+      default:
+        return { text: '', ok: false, error: `Unknown provider: ${engine.provider}` };
+    }
   } catch (err) {
-    return { text: '', ok: false, error: `Gemini error: ${err}` };
+    return { text: '', ok: false, error: `${engineId} error: ${err}` };
   }
 }
 
-// ── Google Gemini with Search Grounding (WORKING — uses GEMINI_API_KEY) ──────
+// ── Google Gemini with Search Grounding ──────────────────────────────────────
+// Uses GeminiProvider's underlying SDK for search tool config, which the
+// generic generateContent interface doesn't support.
 
 async function queryGeminiWithSearch(
   apiKey: string,
@@ -126,6 +111,9 @@ async function queryGeminiWithSearch(
   queryText: string,
 ): Promise<EngineResponse> {
   try {
+    // Use the GoogleGenAI SDK directly via GeminiProvider's internal pattern
+    // because search grounding requires the `tools` config parameter
+    const { GoogleGenAI } = await import('@google/genai');
     const ai = new GoogleGenAI({ apiKey });
     const result = await ai.models.generateContent({
       model,
@@ -138,110 +126,6 @@ async function queryGeminiWithSearch(
     return { text: result.text ?? '', ok: true };
   } catch (err) {
     return { text: '', ok: false, error: `Google SGE error: ${err}` };
-  }
-}
-
-// ── OpenAI-Compatible API ────────────────────────────────────────────────────
-// Works for: ChatGPT, Grok (xAI), Perplexity, Together (Llama), Azure Copilot
-//
-// 🔑 NEEDS KEY for each provider. When key is added to Netlify env vars,
-//    this client will work automatically — no code changes needed.
-//
-// Keys to add:
-//   OPENAI_API_KEY      — https://platform.openai.com/api-keys (GPT-5.4 / GPT-5.4-pro)
-//   XAI_API_KEY         — https://console.x.ai/
-//   PERPLEXITY_API_KEY  — https://www.perplexity.ai/settings/api
-//   TOGETHER_API_KEY    — https://api.together.xyz/settings/api-keys
-//   AZURE_OPENAI_API_KEY + AZURE_OPENAI_ENDPOINT — https://portal.azure.com
-
-async function queryOpenAICompatible(params: {
-  apiKey: string;
-  baseUrl: string;
-  model: string;
-  queryText: string;
-  engineId: EngineId;
-  useMaxCompletionTokens?: boolean;
-}): Promise<EngineResponse> {
-  const { apiKey, baseUrl, model, queryText, engineId, useMaxCompletionTokens } = params;
-
-  try {
-    // GPT-5.x models use max_completion_tokens instead of max_tokens
-    const tokenParam = useMaxCompletionTokens
-      ? { max_completion_tokens: 2048 }
-      : { max_tokens: 2048 };
-
-    const response = await fetch(`${baseUrl}/chat/completions`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${apiKey}`,
-      },
-      body: JSON.stringify({
-        model,
-        messages: [{ role: 'user', content: queryText }],
-        ...tokenParam,
-        temperature: 0.7,
-      }),
-    });
-
-    if (!response.ok) {
-      const errBody = await response.text().catch(() => '');
-      return { text: '', ok: false, error: `${engineId} API ${response.status}: ${errBody}` };
-    }
-
-    const data = await response.json() as {
-      choices?: Array<{ message?: { content?: string } }>;
-    };
-
-    const text = data.choices?.[0]?.message?.content ?? '';
-    return { text, ok: true };
-  } catch (err) {
-    return { text: '', ok: false, error: `${engineId} error: ${err}` };
-  }
-}
-
-// ── Anthropic Claude ─────────────────────────────────────────────────────────
-// 🔑 NEEDS KEY: ANTHROPIC_API_KEY — https://console.anthropic.com/settings/keys
-//
-// Uses Anthropic's native Messages API (not OpenAI-compatible).
-
-async function queryAnthropic(
-  apiKey: string,
-  model: string,
-  queryText: string,
-): Promise<EngineResponse> {
-  try {
-    const response = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': apiKey,
-        'anthropic-version': '2023-06-01',
-      },
-      body: JSON.stringify({
-        model,
-        max_tokens: 2048,
-        messages: [{ role: 'user', content: queryText }],
-      }),
-    });
-
-    if (!response.ok) {
-      const errBody = await response.text().catch(() => '');
-      return { text: '', ok: false, error: `Claude API ${response.status}: ${errBody}` };
-    }
-
-    const data = await response.json() as {
-      content?: Array<{ type: string; text?: string }>;
-    };
-
-    const text = data.content
-      ?.filter(b => b.type === 'text')
-      .map(b => b.text)
-      .join('') ?? '';
-
-    return { text, ok: true };
-  } catch (err) {
-    return { text: '', ok: false, error: `Claude error: ${err}` };
   }
 }
 
