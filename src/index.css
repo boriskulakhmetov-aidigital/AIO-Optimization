@@ -3281,6 +3281,12 @@ body {
   line-height: 1.5;
 }
 
+/* ── Feedback Zone ────────────────────────────────────────── */
+.aio-report__feedback-zone {
+  margin-top: 24px;
+  margin-bottom: 12px;
+}
+
 /* ── Report Responsive ────────────────────────────────────── */
 @media (max-width: 768px) {
   .intel-highlights { grid-template-columns: 1fr; }

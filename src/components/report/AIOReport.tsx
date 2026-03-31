@@ -1,6 +1,8 @@
 import { useState } from 'react';
 import type { AIOReportData } from '../../lib/types';
 import type { SupabaseClient } from '@boriskulakhmetov-aidigital/design-system';
+import { FeedbackWidget } from '@AiDigital-com/design-system';
+import { useAuth } from '@clerk/react';
 import { ReportHeader } from './ReportHeader';
 import { KPIOverview } from './KPIOverview';
 import { EngineAwareness } from './EngineAwareness';
@@ -9,6 +11,36 @@ import { ActionItems } from './ActionItems';
 import { EngineDeepDive } from './EngineDeepDive';
 
 type ReportPage = 'overview' | 'engines' | 'competitive' | 'actions' | 'deep-dive';
+
+/** Map page ID to feedback context for FeedbackWidget */
+function getPageFeedbackConfig(
+  pageId: ReportPage,
+  data: AIOReportData,
+): { label: string; prompt: string; summary: string } | null {
+  if (pageId === 'overview') {
+    return {
+      label: 'KPI Overview',
+      prompt: 'Was this assessment accurate?',
+      summary: data.executive_summary?.slice(0, 500) ?? '',
+    };
+  }
+  if (pageId === 'engines') {
+    return {
+      label: 'Engine Awareness',
+      prompt: 'Were the engine analyses insightful?',
+      summary: data.cross_engine_review?.executive_summary?.slice(0, 500) ?? '',
+    };
+  }
+  if (pageId === 'actions') {
+    return {
+      label: 'Action Items',
+      prompt: 'Were these recommendations actionable?',
+      summary: data.cross_engine_review?.action_items?.map(a => a.action_text).join(', ').slice(0, 500) ?? '',
+    };
+  }
+  // competitive and deep-dive are not scorable
+  return null;
+}
 
 interface AIOReportProps {
   data: AIOReportData;
@@ -19,6 +51,7 @@ interface AIOReportProps {
 }
 
 export function AIOReport({ data, conceptName, onNewScan, scanId, supabase }: AIOReportProps) {
+  const { getToken } = useAuth();
   const [activePage, setActivePage] = useState<ReportPage>('overview');
   const [selectedEngine, setSelectedEngine] = useState<string | null>(null);
 
@@ -83,6 +116,54 @@ export function AIOReport({ data, conceptName, onNewScan, scanId, supabase }: AI
             onSelect={setSelectedEngine}
           />
         )}
+
+        {scanId && (() => {
+          const config = getPageFeedbackConfig(activePage, data);
+          if (!config) return null;
+          return (
+            <div className="aio-report__feedback-zone">
+              <FeedbackWidget
+                key={activePage}
+                variant="card"
+                outputId={scanId}
+                app="aio-optimization"
+                sectionId={activePage}
+                label={config.label}
+                prompt={config.prompt}
+                outputText={config.summary}
+                inputSnapshot={{
+                  concept_name: conceptName,
+                  engines_tested: data.meta.engines_tested?.length,
+                }}
+                onSubmit={async (score, feedbackText, meta) => {
+                  try {
+                    const token = await getToken();
+                    fetch('/.netlify/functions/save-feedback', {
+                      method: 'POST',
+                      headers: {
+                        'Content-Type': 'application/json',
+                        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+                      },
+                      body: JSON.stringify({
+                        sessionId: scanId,
+                        app: 'aio-optimization',
+                        jobId: scanId,
+                        score,
+                        feedbackText,
+                        outputText: config.summary,
+                        inputSnapshot: {
+                          concept_name: conceptName,
+                          engines_tested: data.meta.engines_tested?.length,
+                          section: meta.sectionId,
+                        },
+                      }),
+                    }).catch(console.error);
+                  } catch { /* non-fatal */ }
+                }}
+              />
+            </div>
+          );
+        })()}
       </div>
     </div>
   );
