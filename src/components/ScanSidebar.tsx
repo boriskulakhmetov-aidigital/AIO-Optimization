@@ -1,5 +1,9 @@
 import { useState, useEffect } from 'react';
+<<<<<<< HEAD
 import type { SupabaseClient } from '@AiDigital-com/design-system';
+=======
+import type { SupabaseClient, UseSessionPersistenceReturn } from '@boriskulakhmetov-aidigital/design-system';
+>>>>>>> develop
 
 interface ScanItem {
   id: string;
@@ -10,7 +14,7 @@ interface ScanItem {
 }
 
 interface ScanSidebarProps {
-  refreshKey: number;
+  session: UseSessionPersistenceReturn | null;
   currentScanId: string | null;
   loadingScanId: string | null;
   onSelectScan: (id: string) => void;
@@ -20,22 +24,28 @@ interface ScanSidebarProps {
 }
 
 export function ScanSidebar({
-  refreshKey, currentScanId, loadingScanId,
+  session, currentScanId, loadingScanId,
   onSelectScan, onNewScan, onDeleteScan, supabase,
 }: ScanSidebarProps) {
+  // Use session.sessions for sidebar items, with extra fields fetched via supabase
   const [scans, setScans] = useState<ScanItem[]>([]);
 
+  // Fetch full scan details (concept_type, status) when session list updates
   useEffect(() => {
-    if (!supabase) return;
+    if (!supabase || !session?.sessions?.length) {
+      setScans([]);
+      return;
+    }
+    const ids = session.sessions.map(s => s.id);
     (supabase as any)
       .from('scans')
       .select('id, concept_name, concept_type, status, created_at')
+      .in('id', ids)
       .or('deleted_by_user.is.null,deleted_by_user.eq.false')
       .order('created_at', { ascending: false })
-      .limit(100)
       .then(({ data }: any) => setScans(data ?? []))
       .catch(console.warn);
-  }, [refreshKey, supabase]);
+  }, [session?.sessions, supabase]);
 
   return (
     <aside className="sidebar">

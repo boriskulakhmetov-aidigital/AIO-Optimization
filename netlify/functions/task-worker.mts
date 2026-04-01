@@ -27,6 +27,7 @@ import { log } from './_shared/logger.js';
 import { trackTokens } from './_shared/access.js';
 import { extractGeminiTokens, getAppUrl } from '@AiDigital-com/design-system/utils';
 import type { GeneratedQuery, EngineId } from './_shared/types.js';
+import { QUERY_COUNT_MIN, QUERY_COUNT_MAX, QUERY_COUNT_DEFAULT } from './_shared/constants.js';
 
 function getSupabase() {
   return createClient(process.env.SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!);
@@ -171,7 +172,7 @@ async function handleGenerateQueries(supabase: any, scanId: string, payload: any
 
   await writeJobStatus(scanId, { status: 'streaming', meta: { scan_id: scanId, phase: 'generating_queries' } });
 
-  const clampedCount = Math.max(20, Math.min(80, queryCount || 50));
+  const clampedCount = Math.max(QUERY_COUNT_MIN, Math.min(QUERY_COUNT_MAX, queryCount || QUERY_COUNT_DEFAULT));
   const prompt = buildQueryGeneratorPrompt({
     conceptType: scanConfig.concept_type,
     conceptName: scanConfig.concept_name,

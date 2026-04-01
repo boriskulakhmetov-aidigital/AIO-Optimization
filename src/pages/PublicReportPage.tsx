@@ -75,6 +75,13 @@ export function PublicReportPage() {
     return () => window.removeEventListener('message', handleMessage);
   }, [conceptName]);
 
+  // Add aidl-pdf-mode class to body when ?pdf-mode=1 is in the URL (for PDFShift)
+  useEffect(() => {
+    const isPdf = new URLSearchParams(window.location.search).get('pdf-mode') === '1';
+    if (isPdf) document.body.classList.add('aidl-pdf-mode');
+    return () => document.body.classList.remove('aidl-pdf-mode');
+  }, []);
+
   // Report height to parent for auto-sizing iframe
   useEffect(() => {
     if (window.parent !== window) {

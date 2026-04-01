@@ -1,6 +1,11 @@
 import { useState, useEffect, useCallback, createContext, useContext, useRef } from 'react';
+<<<<<<< HEAD
 import { AppShell, ChatPanel, useScanProgress, useJobStatus } from '@AiDigital-com/design-system';
 import type { AppShellContext, SupabaseClient } from '@AiDigital-com/design-system';
+=======
+import { AppShell, ChatPanel, useScanProgress, useJobStatus, useSessionPersistence } from '@boriskulakhmetov-aidigital/design-system';
+import type { AppShellContext, SupabaseClient, UseSessionPersistenceReturn } from '@boriskulakhmetov-aidigital/design-system';
+>>>>>>> develop
 import { createClient } from '@supabase/supabase-js';
 import { SignIn, UserButton, useAuth } from '@clerk/react';
 import type { AppPhase } from './lib/types';
@@ -22,7 +27,7 @@ const supabaseConfig = import.meta.env.VITE_SUPABASE_URL ? {
 interface ScanBridge {
   scanId: string | null;
   loadingScanId: string | null;
-  sidebarRefreshKey: number;
+  session: UseSessionPersistenceReturn | null;
   supabase: SupabaseClient | null;
   onSelectScan: (id: string) => void;
   onNewScan: () => void;
@@ -40,7 +45,6 @@ function ScanBridgeProvider() {
   const [phase, setPhase] = useState<AppPhase>('chat');
   const [scanId, setScanId] = useState<string | null>(null);
   const [conceptName, setConceptName] = useState('');
-  const [sidebarRefreshKey, setSidebarRefreshKey] = useState(0);
   const [loadingScanId, setLoadingScanId] = useState<string | null>(null);
   const [reportData, setReportData] = useState<AIOReportData | null>(null);
   const [errorDetail, setErrorDetail] = useState<string | null>(null);
@@ -57,11 +61,31 @@ function ScanBridgeProvider() {
   const supabaseRef = useRef<SupabaseClient | null>(null);
   const [supabase, setSupabase] = useState<SupabaseClient | null>(null);
 
+  // userId from Clerk
+  const { userId } = useAuth();
+
   // Stable wrapper that always delegates to the latest ref
   const authFetch = useCallback(
     (url: string, options?: RequestInit) => authFetchRef.current(url, options),
     [],
   );
+
+  // ── Session persistence ──
+  const session = useSessionPersistence(supabase, null, userId ?? null, {
+    table: 'scans',
+    app: 'aio-optimization',
+    titleField: 'concept_name',
+    mergeConfig: {},
+    defaultFields: { status: 'chatting' },
+    mergeEndpoint: '/.netlify/functions/save-session',
+  });
+
+  // Keep scanId in sync with session
+  useEffect(() => {
+    if (session.sessionId && session.sessionId !== scanId && phase === 'chat') {
+      setScanId(session.sessionId);
+    }
+  }, [session.sessionId]);
 
   // ── Scan dispatch handler ──
   async function handleScanDispatch(config: ScanDispatchConfig, sessionId: string, messages: { role: string; content: string }[]) {
@@ -82,8 +106,16 @@ function ScanBridgeProvider() {
     setPhase('generating');
     setErrorDetail(null);
 
+    // Persist scan metadata via session
+    session.mergeFields({
+      status: 'scanning',
+      concept_name: resolvedConfig.concept_name,
+      concept_type: resolvedConfig.concept_type,
+      concept_category: resolvedConfig.concept_category,
+    });
+
     try {
-      console.log('[AIO] Step 1: Generating queries…', { concept_name: resolvedConfig.concept_name, engines: resolvedConfig.engines, query_count: resolvedConfig.query_count });
+      console.log('[AIO] Step 1: Generating queries...', { concept_name: resolvedConfig.concept_name, engines: resolvedConfig.engines, query_count: resolvedConfig.query_count });
       const genRes = await authFetch('/.netlify/functions/generate-queries', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -106,7 +138,7 @@ function ScanBridgeProvider() {
       const genData = await genRes.json();
       console.log('[AIO] Step 1 complete:', genData.total_queries, 'queries generated');
 
-      console.log('[AIO] Step 2: Dispatching scan…', { scanId: sessionId, engines: resolvedConfig.engines.length, queries: genData.queries?.length });
+      console.log('[AIO] Step 2: Dispatching scan...', { scanId: sessionId, engines: resolvedConfig.engines.length, queries: genData.queries?.length });
       setPhase('scanning');
 
       const dispatchRes = await authFetch('/.netlify/functions/dispatch-scan', {
@@ -135,7 +167,7 @@ function ScanBridgeProvider() {
       }
       const dispatchData = await dispatchRes.json();
       console.log('[AIO] Step 2 complete:', dispatchData);
-      setSidebarRefreshKey(k => k + 1);
+      session.refreshSessions();
     } catch (err) {
       console.error('[AIO] Dispatch error:', err);
       setErrorDetail(`Error: ${err instanceof Error ? err.message : String(err)}`);
@@ -143,8 +175,8 @@ function ScanBridgeProvider() {
     }
   }
 
-  const { messages, streaming, error: chatError, sendMessage, reset: resetOrchestrator } =
-    useOrchestrator(handleScanDispatch);
+  const { messages, streaming, error: chatError, sendMessage, reset: resetOrchestrator, loadMessages } =
+    useOrchestrator(handleScanDispatch, session);
 
   // ── Realtime subscriptions (replace polling) ──
 
@@ -186,7 +218,7 @@ function ScanBridgeProvider() {
           .catch(console.warn);
       }
       setPhase('report_ready');
-      setSidebarRefreshKey(k => k + 1);
+      session.refreshSessions();
       return;
     }
 
@@ -238,12 +270,18 @@ function ScanBridgeProvider() {
     setConceptName('');
     setReportData(null);
     resetOrchestrator();
+    session.newSession();
+    session.refreshSessions();
   }
 
   async function handleLoadScan(id: string) {
     if (!supabaseRef.current) return;
     setLoadingScanId(id);
     try {
+      // Load session via persistence hook
+      await session.loadSession(id);
+
+      // Direct DB read for immediate field access (loadSession is async)
       const { data: scan } = await (supabaseRef.current as any)
         .from('scans')
         .select('*')
@@ -254,6 +292,11 @@ function ScanBridgeProvider() {
       setScanId(scan.id);
       setConceptName(scan.concept_name ?? '');
       setReportData(null);
+
+      // Restore orchestrator messages
+      if (scan.messages) {
+        loadMessages(scan.messages);
+      }
 
       if (scan.report_data) {
         setReportData(scan.report_data as AIOReportData);
@@ -275,22 +318,15 @@ function ScanBridgeProvider() {
   }
 
   async function handleDeleteScan(id: string) {
-    if (supabaseRef.current) {
-      (supabaseRef.current as any)
-        .from('scans')
-        .update({ deleted_by_user: true })
-        .eq('id', id)
-        .then(() => {})
-        .catch(console.warn);
-    }
+    await session.deleteSession(id);
     if (scanId === id) handleNewScan();
-    setSidebarRefreshKey(k => k + 1);
+    session.refreshSessions();
   }
 
   const bridge: ScanBridge = {
     scanId,
     loadingScanId,
-    sidebarRefreshKey,
+    session,
     supabase,
     onSelectScan: handleLoadScan,
     onNewScan: handleNewScan,
@@ -408,7 +444,7 @@ function ConnectedSidebar() {
   if (!bridge) return null;
   return (
     <ScanSidebar
-      refreshKey={bridge.sidebarRefreshKey}
+      session={bridge.session}
       currentScanId={bridge.scanId}
       loadingScanId={bridge.loadingScanId}
       onSelectScan={bridge.onSelectScan}
@@ -418,4 +454,3 @@ function ConnectedSidebar() {
     />
   );
 }
-

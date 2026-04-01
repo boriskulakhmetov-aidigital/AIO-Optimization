@@ -2,6 +2,7 @@ import { useState, useRef, useCallback } from 'react';
 import { useAuth } from '@clerk/react';
 import type { ChatMessage } from '../lib/types';
 import { parseSSEStream } from '@AiDigital-com/design-system';
+import type { UseSessionPersistenceReturn } from '@AiDigital-com/design-system';
 
 export interface ScanDispatchConfig {
   concept_type: string;
@@ -12,54 +13,46 @@ export interface ScanDispatchConfig {
   query_count: number;
 }
 
-interface OrchestratorState {
-  messages: ChatMessage[];
-  streaming: boolean;
-  error: string | null;
-}
-
 export function useOrchestrator(
   onScanDispatch: (config: ScanDispatchConfig, sessionId: string, messages: ChatMessage[]) => void,
+  session: UseSessionPersistenceReturn | null,
 ) {
   const { getToken } = useAuth();
-  const [state, setState] = useState<OrchestratorState>({
-    messages: [],
-    streaming: false,
-    error: null,
-  });
+  const [streaming, setStreaming] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
+  // Local ref for real-time streaming — React batches updates in async loops
   const messagesRef = useRef<ChatMessage[]>([]);
-  const sessionIdRef = useRef<string>(crypto.randomUUID());
+
+  // Keep ref in sync when session messages change externally (e.g. loadSession)
+  const lastSyncedRef = useRef<ChatMessage[]>([]);
+  if (session && session.messages !== lastSyncedRef.current) {
+    messagesRef.current = session.messages;
+    lastSyncedRef.current = session.messages;
+  }
 
   const reset = useCallback(() => {
     messagesRef.current = [];
-    sessionIdRef.current = crypto.randomUUID();
-    setState({ messages: [], streaming: false, error: null });
+    setStreaming(false);
+    setError(null);
   }, []);
 
-  function addMessage(msg: ChatMessage) {
-    messagesRef.current = [...messagesRef.current, msg];
-    setState(s => ({ ...s, messages: messagesRef.current }));
-  }
-
-  function updateLastAssistant(text: string) {
-    const msgs = messagesRef.current;
-    const last = msgs[msgs.length - 1];
-    if (last?.role === 'assistant') {
-      const updated = [...msgs.slice(0, -1), { ...last, content: last.content + text }];
-      messagesRef.current = updated;
-      setState(s => ({ ...s, messages: updated }));
-    } else {
-      addMessage({ id: crypto.randomUUID(), role: 'assistant', content: text });
+  /** Restore messages from a loaded scan (called by App.tsx after loadSession) */
+  const loadMessages = useCallback((msgs: ChatMessage[]) => {
+    messagesRef.current = msgs;
+    if (session) {
+      session.setMessages(msgs);
     }
-  }
+  }, [session]);
 
   async function sendMessage(userText: string) {
-    if (state.streaming) return;
+    if (streaming || !session) return;
 
     const userMsg: ChatMessage = { id: crypto.randomUUID(), role: 'user', content: userText };
-    addMessage(userMsg);
-    setState(s => ({ ...s, streaming: true, error: null }));
+    messagesRef.current = [...messagesRef.current, userMsg];
+    session.addMessage(userMsg);
+    setStreaming(true);
+    setError(null);
 
     try {
       const token = await getToken();
@@ -78,13 +71,21 @@ export function useOrchestrator(
 
       for await (const event of parseSSEStream(res.body)) {
         if (event.type === 'text_delta') {
-          updateLastAssistant(event.text);
+          // Update local ref for real-time streaming
+          const msgs = messagesRef.current;
+          const last = msgs[msgs.length - 1];
+          if (last?.role === 'assistant') {
+            messagesRef.current = [...msgs.slice(0, -1), { ...last, content: last.content + event.text }];
+          } else {
+            messagesRef.current = [...msgs, { id: crypto.randomUUID(), role: 'assistant', content: event.text }];
+          }
+          // Update session state for React rendering
+          session.updateLastAssistant(event.text);
         } else if (event.type === 'scan_dispatch') {
           console.log('[AIO] Orchestrator emitted scan_dispatch:', event.scanConfig);
-          // Call dispatch handler but don't let its errors kill the orchestrator
           onScanDispatch(
             event.scanConfig as unknown as ScanDispatchConfig,
-            sessionIdRef.current,
+            session.sessionId!,
             messagesRef.current,
           );
         } else if (event.type === 'error') {
@@ -92,15 +93,24 @@ export function useOrchestrator(
         }
       }
 
-      // Messages are passed to dispatch-scan when scan starts — no need to persist during chat
+      // Sync final messages to session and flush
+      session.setMessages(messagesRef.current);
+      await session.flush();
 
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Something went wrong';
-      setState(s => ({ ...s, error: msg }));
+      setError(msg);
     } finally {
-      setState(s => ({ ...s, streaming: false }));
+      setStreaming(false);
     }
   }
 
-  return { ...state, sendMessage, sessionId: sessionIdRef.current, reset };
+  return {
+    messages: session?.messages ?? [],
+    streaming,
+    error,
+    sendMessage,
+    reset,
+    loadMessages,
+  };
 }

@@ -88,7 +88,7 @@ export default async (req: Request) => {
 
       try {
         
-        log.info('orchestrator.start', { function_name: 'orchestrator', user_id: userId, user_email: email, ai_provider: 'gemini', ai_model: 'gemini-3-flash-preview', meta: { messageCount: messages?.length, conversation: convoLog } });
+        log.info('orchestrator.start', { function_name: 'orchestrator', user_id: userId, user_email: email, ai_provider: 'gemini', ai_model: 'gemini-3-flash-preview', meta: { messageCount: messages?.length } });
         const timer = log.time('gemini.call', { function_name: 'orchestrator', user_id: userId, user_email: email, ai_provider: 'gemini', ai_model: 'gemini-3-flash-preview' });
 
         const stream = await ai.models.generateContentStream({
