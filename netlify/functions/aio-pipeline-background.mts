@@ -328,7 +328,7 @@ export default async (req: Request) => {
 
         const responseText = synthResult.text ?? '';
         const synthTokens = extractGeminiTokens(synthResult);
-        if (userId) trackTokens(userId, 'aio-optimization:pipeline', 'gemini', 'gemini-3.1-pro-preview', synthTokens.inputTokens, synthTokens.outputTokens, synthTokens.totalTokens).catch(() => {});
+        if (userId) trackTokens(userId, 'aio-optimization:synthesis', 'gemini', 'gemini-3.1-pro-preview', synthTokens.inputTokens, synthTokens.outputTokens, synthTokens.totalTokens).catch(() => {});
 
         // Parse with repairJson fallback
         let synthesis: EngineSynthesis & { per_query_scores?: any[] };
