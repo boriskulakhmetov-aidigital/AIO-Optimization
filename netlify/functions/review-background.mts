@@ -104,7 +104,7 @@ export default async (req: Request) => {
     // Track token usage
     const reviewTokens = extractGeminiTokens(lastResult ?? {});
     if (scan.user_id) {
-      trackTokens(scan.user_id, 'aio-optimization', 'gemini', 'gemini-3.1-pro-preview', reviewTokens.inputTokens, reviewTokens.outputTokens, reviewTokens.totalTokens);
+      trackTokens(scan.user_id, 'aio-optimization:pipeline', 'gemini', 'gemini-3.1-pro-preview', reviewTokens.inputTokens, reviewTokens.outputTokens, reviewTokens.totalTokens);
     }
 
     // Parse the review JSON (with repairJson fallback for Gemini malformed output)
