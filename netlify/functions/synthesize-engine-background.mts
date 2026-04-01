@@ -143,7 +143,7 @@ export default async (req: Request) => {
     // Track token usage
     const synthTokens = extractGeminiTokens(lastResult ?? {});
     if (scan.user_id) {
-      trackTokens(scan.user_id, 'aio-optimization', 'gemini', 'gemini-3.1-pro-preview', synthTokens.inputTokens, synthTokens.outputTokens, synthTokens.totalTokens);
+      trackTokens(scan.user_id, 'aio-optimization:pipeline', 'gemini', 'gemini-3.1-pro-preview', synthTokens.inputTokens, synthTokens.outputTokens, synthTokens.totalTokens);
     }
 
     // Ensure required fields

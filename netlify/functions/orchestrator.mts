@@ -119,7 +119,7 @@ export default async (req: Request) => {
 
         const tokens = extractGeminiTokens(lastChunk ?? {});
         timer.end({ ai_input_tokens: tokens.inputTokens, ai_output_tokens: tokens.outputTokens, ai_total_tokens: tokens.totalTokens });
-        trackTokens(userId, 'aio-optimization', 'gemini', 'gemini-3-flash-preview', tokens.inputTokens, tokens.outputTokens, tokens.totalTokens);
+        trackTokens(userId, 'aio-optimization:orchestrator', 'gemini', 'gemini-3-flash-preview', tokens.inputTokens, tokens.outputTokens, tokens.totalTokens);
         emit({ type: 'done' });
       } catch (err) {
         console.error('Orchestrator error:', err);
