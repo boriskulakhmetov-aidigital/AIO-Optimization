@@ -116,6 +116,14 @@ async function executeTask(supabase: any, task: any) {
     case 'dispatch_engines': return handleDispatchEngines(supabase, scanId, payload);
     case 'synthesize_engine': return dispatchToBackground(scanId, payload, 'synthesize-engine-background');
     case 'review': return dispatchToBackground(scanId, payload, 'review-background');
+    case 'run_auto_eval': {
+      const { executeAutoEval } = await import('@AiDigital-com/design-system/learning');
+      const { createLLMProvider } = await import('@AiDigital-com/design-system/server');
+      const llm = createLLMProvider('gemini', process.env.GEMINI_API_KEY!, 'analysis');
+      const result = await executeAutoEval(supabase, llm, { apiKey: process.env.GEMINI_API_KEY! }, payload);
+      if (!result.success) throw new Error(result.error || 'Auto-eval failed');
+      return;
+    }
     default: throw new Error(`Unknown task type: ${taskType}`);
   }
 }
