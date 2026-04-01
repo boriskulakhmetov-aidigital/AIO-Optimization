@@ -1,9 +1,5 @@
 import { useState, useEffect } from 'react';
-<<<<<<< HEAD
 import type { SupabaseClient } from '@AiDigital-com/design-system';
-=======
-import type { SupabaseClient, UseSessionPersistenceReturn } from '@boriskulakhmetov-aidigital/design-system';
->>>>>>> develop
 
 interface ScanItem {
   id: string;

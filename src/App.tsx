@@ -1,11 +1,6 @@
 import { useState, useEffect, useCallback, createContext, useContext, useRef } from 'react';
-<<<<<<< HEAD
 import { AppShell, ChatPanel, useScanProgress, useJobStatus } from '@AiDigital-com/design-system';
 import type { AppShellContext, SupabaseClient } from '@AiDigital-com/design-system';
-=======
-import { AppShell, ChatPanel, useScanProgress, useJobStatus, useSessionPersistence } from '@boriskulakhmetov-aidigital/design-system';
-import type { AppShellContext, SupabaseClient, UseSessionPersistenceReturn } from '@boriskulakhmetov-aidigital/design-system';
->>>>>>> develop
 import { createClient } from '@supabase/supabase-js';
 import { SignIn, UserButton, useAuth } from '@clerk/react';
 import type { AppPhase } from './lib/types';

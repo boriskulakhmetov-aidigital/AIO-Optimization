@@ -51,7 +51,6 @@ interface AIOReportProps {
   isPrintMode?: boolean;
 }
 
-<<<<<<< HEAD
 export function AIOReport({ data, conceptName, onNewScan, scanId, supabase }: AIOReportProps) {
   const { getToken } = useAuth();
   const [activePage, setActivePage] = useState<ReportPage>('overview');
