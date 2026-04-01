@@ -200,7 +200,23 @@ async function handleGenerateQueries(supabase: any, scanId: string, payload: any
         ai.models.generateContent({
           model: 'gemini-3-flash-preview',
           contents: [{ role: 'user', parts: [{ text: prompt }] }],
-          config: { maxOutputTokens: 4096, temperature: 0.9 + attempt * 0.05, responseMimeType: 'application/json' },
+          config: {
+            maxOutputTokens: 4096,
+            temperature: 0.9 + attempt * 0.05,
+            responseMimeType: 'application/json',
+            responseSchema: {
+              type: 'array',
+              items: {
+                type: 'object',
+                properties: {
+                  text: { type: 'string' },
+                  intent_type: { type: 'string' },
+                  intent_subtype: { type: 'string' },
+                },
+                required: ['text', 'intent_type'],
+              },
+            },
+          },
         }),
         new Promise<never>((_, reject) => setTimeout(() => reject(new Error('Gemini generateContent timed out after 30s')), 30_000)),
       ]);

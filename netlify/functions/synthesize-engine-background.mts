@@ -7,27 +7,45 @@ import {
   writeJobStatus,
 } from './_shared/supabase.js';
 import { getEngineName } from './_shared/engineRegistry.js';
-import { buildSynthesizerPrompt, formatQueriesForSynthesis } from './_shared/synthesizerPrompt.js';
-import type { EngineId, EngineSynthesis } from './_shared/types.js';
+import type { EngineId, EngineSynthesis, IntentBreakdown, ResponseExcerpt } from './_shared/types.js';
 import { log } from './_shared/logger.js';
 import { getAppUrl } from '@AiDigital-com/design-system/utils';
 import { trackTokens } from './_shared/access.js';
 import { extractGeminiTokens } from '@AiDigital-com/design-system/utils';
-import { repairJson } from './_shared/repairJson.js';
 
-/**
- * POST /synthesize-engine-background  (background function)
- *
- * Runs synthesis for ONE engine. Triggered by scan-engine-background
- * when all queries for that engine are complete.
- *
- * 1. Loads all query/response pairs for the engine
- * 2. Sends them to Gemini with the synthesizer prompt
- * 3. Parses the EngineSynthesis JSON output
- * 4. Updates per-query scores in the DB
- * 5. Saves the synthesis to scan_engines.synthesis_data
- * 6. If all engines are synthesized, triggers review-background
- */
+/* ── Per-query score (from LLM batch evaluation) ─────────────────────────── */
+
+interface QueryScore {
+  query_id: string;
+  mentioned: boolean;
+  mention_position: number | null;
+  sentiment: 'positive' | 'neutral' | 'negative';
+  sentiment_score: number;
+  recommendation_strength: 'strong' | 'moderate' | 'weak' | 'none';
+  context_type: 'primary_rec' | 'alternative' | 'comparison' | 'mention_only';
+}
+
+const QUERY_SCORE_SCHEMA = {
+  type: 'array' as const,
+  items: {
+    type: 'object' as const,
+    properties: {
+      query_id: { type: 'string' as const },
+      mentioned: { type: 'boolean' as const },
+      mention_position: { type: 'integer' as const, nullable: true },
+      sentiment: { type: 'string' as const, enum: ['positive', 'neutral', 'negative'] },
+      sentiment_score: { type: 'number' as const },
+      recommendation_strength: { type: 'string' as const, enum: ['strong', 'moderate', 'weak', 'none'] },
+      context_type: { type: 'string' as const, enum: ['primary_rec', 'alternative', 'comparison', 'mention_only'] },
+    },
+    required: ['query_id', 'mentioned', 'sentiment', 'sentiment_score', 'recommendation_strength', 'context_type'],
+  },
+};
+
+const BATCH_SIZE = 10;
+
+/* ── Main handler ────────────────────────────────────────────────────────── */
+
 export default async (req: Request) => {
   if (req.method !== 'POST') {
     return new Response('Method not allowed', { status: 405 });
@@ -49,7 +67,6 @@ export default async (req: Request) => {
   log.info('synthesis.start', { function_name: 'synthesize-engine-background', user_id: userId, user_email: userEmail, entity_type: 'scan', entity_id: engineJobId, correlation_id: scanId, ai_provider: 'gemini', ai_model: 'gemini-3.1-pro-preview' });
 
   try {
-    // Load engine info and scan context
     const engineJob = await getScanEngine(engineJobId);
     if (!engineJob) throw new Error(`Engine job not found: ${engineJobId}`);
 
@@ -59,13 +76,9 @@ export default async (req: Request) => {
     const scan = await getScanById(scanId);
     if (!scan) throw new Error(`Scan not found: ${scanId}`);
 
-    // Mark engine as synthesizing
     await updateScanEngineStatus(engineJobId, 'synthesizing');
-
-    // Write job status so frontend can track phase via Realtime
     await writeJobStatus(scanId, { status: 'streaming', meta: { phase: 'synthesizing', engine_id: engineId } });
 
-    // Load all queries for this engine
     const queries = await getQueriesForEngine(engineJobId);
     const completedQueries = queries.filter(q => q.status === 'complete' || q.status === 'error');
 
@@ -76,108 +89,227 @@ export default async (req: Request) => {
       return new Response('No queries to synthesize', { status: 200 });
     }
 
-    // Build the synthesis prompt
-    const systemPrompt = buildSynthesizerPrompt({
-      engineName,
-      conceptName: scan.concept_name,
-      conceptType: scan.concept_type,
-      conceptCategory: scan.concept_category ?? '',
-      queriesCount: completedQueries.length,
-    });
+    // Filter out placeholder responses — they don't count for scoring
+    const validQueries = completedQueries.filter(q =>
+      q.response_text && !q.response_text.includes('[PLACEHOLDER') && !q.response_text.includes('API key not configured')
+    );
+    const placeholderQueries = completedQueries.filter(q =>
+      !q.response_text || q.response_text.includes('[PLACEHOLDER') || q.response_text.includes('API key not configured')
+    );
 
-    const queryData = formatQueriesForSynthesis(completedQueries);
-
-    // Call Gemini to synthesize with retry (transient 502/503 + JSON parse failures)
     const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY! });
+    const conceptName = scan.concept_name;
+    let totalInputTokens = 0, totalOutputTokens = 0, totalTokens = 0;
 
-    type SynthesisResult = EngineSynthesis & { per_query_scores?: Array<{
-      query_id: string; mentioned: boolean; mention_position: number | null;
-      sentiment: string; sentiment_score: number;
-      recommendation_strength: string; context_type: string;
-    }> };
+    // ── Step 1: Parallel batch evaluation ────────────────────────────────
+    // Split valid queries into batches, evaluate each in parallel with Pro + responseSchema
 
-    let synthesis: SynthesisResult = undefined as any;
-    let lastResult: any = null;
+    const batches: typeof validQueries[] = [];
+    for (let i = 0; i < validQueries.length; i += BATCH_SIZE) {
+      batches.push(validQueries.slice(i, i + BATCH_SIZE));
+    }
 
-    for (let attempt = 0; attempt < 3; attempt++) {
-      try {
+    const batchSystem = `You are an AI Search Optimization analyst. For each query/response pair, evaluate whether "${conceptName}" is mentioned or recommended.
+
+For each query, return:
+- query_id: the provided ID
+- mentioned: was "${conceptName}" (or a clear reference) mentioned? (boolean)
+- mention_position: if mentioned in a list/ranking, what position? 1 = first. null if not in a list.
+- sentiment: positive, neutral, or negative
+- sentiment_score: -1.0 (very negative) to +1.0 (very positive)
+- recommendation_strength: "strong" (top pick), "moderate" (solid option), "weak" (with caveats), "none" (not mentioned)
+- context_type: "primary_rec", "alternative", "comparison", or "mention_only"
+
+Be precise. Return the array of scores.`;
+
+    const allScores: QueryScore[] = [];
+
+    const batchResults = await Promise.allSettled(
+      batches.map(async (batch) => {
+        const batchText = batch.map(q =>
+          `--- Query (id: ${q.id}, intent: ${q.intent_type}) ---\nQ: ${q.query_text}\nA: ${q.response_text || '(no response)'}`
+        ).join('\n\n');
+
         const result = await ai.models.generateContent({
           model: 'gemini-3.1-pro-preview',
-          contents: [{ role: 'user', parts: [{ text: queryData }] }],
+          contents: [{ role: 'user', parts: [{ text: batchText }] }],
           config: {
-            systemInstruction: systemPrompt,
-            maxOutputTokens: 65536,
-            temperature: 0.3 + attempt * 0.05,
+            systemInstruction: batchSystem,
+            maxOutputTokens: 8192,
+            temperature: 0.2,
             responseMimeType: 'application/json',
+            responseSchema: QUERY_SCORE_SCHEMA,
           },
         });
-        lastResult = result;
-        const responseText = result.text ?? '';
 
-        // Parse with repairJson fallback
-        try {
-          synthesis = JSON.parse(responseText);
-        } catch {
-          try {
-            synthesis = JSON.parse(repairJson(responseText));
-          } catch {
-            const match = responseText.match(/\{[\s\S]*\}/);
-            if (match) {
-              synthesis = JSON.parse(repairJson(match[0]));
-            } else {
-              throw new Error('Failed to parse synthesis response as JSON');
-            }
-          }
-        }
-        break; // success
-      } catch (retryErr: any) {
-        console.warn(`Synthesis attempt ${attempt + 1}/3 failed for ${engineId}:`, retryErr.message);
-        if (attempt < 2) {
-          await new Promise(r => setTimeout(r, 3000 * (attempt + 1)));
-          continue;
-        }
-        throw retryErr; // final attempt — rethrow
-      }
+        const tokens = extractGeminiTokens(result);
+        totalInputTokens += tokens.inputTokens;
+        totalOutputTokens += tokens.outputTokens;
+        totalTokens += tokens.totalTokens;
+
+        return JSON.parse(result.text ?? '[]') as QueryScore[];
+      })
+    );
+
+    for (const r of batchResults) {
+      if (r.status === 'fulfilled') allScores.push(...r.value);
     }
 
-    // Track token usage
-    const synthTokens = extractGeminiTokens(lastResult ?? {});
+    // Add placeholder queries as "none" scores
+    for (const q of placeholderQueries) {
+      allScores.push({
+        query_id: q.id,
+        mentioned: false,
+        mention_position: null,
+        sentiment: 'neutral',
+        sentiment_score: 0,
+        recommendation_strength: 'none',
+        context_type: 'mention_only',
+      });
+    }
+
+    // ── Step 2: Deterministic KPI aggregation ────────────────────────────
+
+    const validScores = allScores.filter(s => !placeholderQueries.some(q => q.id === s.query_id));
+    const n = validScores.length || 1; // avoid division by zero
+
+    const mentionedScores = validScores.filter(s => s.mentioned);
+    const rankedScores = validScores.filter(s => s.mention_position != null);
+    const discoveryScores = validScores.filter(s => {
+      const q = completedQueries.find(cq => cq.id === s.query_id);
+      return q?.intent_type === 'discovery' || q?.intent_type === 'informational';
+    });
+    const competitiveScores = validScores.filter(s => {
+      const q = completedQueries.find(cq => cq.id === s.query_id);
+      return q?.intent_type === 'comparative' || q?.intent_type === 'commercial';
+    });
+
+    const rsiMap = { strong: 3, moderate: 2, weak: 1, none: 0 };
+
+    const ai_sov = round1(mentionedScores.length / n * 100);
+    const first_position_rate = round1(rankedScores.filter(s => s.mention_position === 1).length / n * 100);
+    const top3_rate = round1(rankedScores.filter(s => s.mention_position != null && s.mention_position <= 3).length / n * 100);
+    const avg_rank_position = rankedScores.length > 0
+      ? round1(rankedScores.reduce((s, q) => s + (q.mention_position ?? 0), 0) / rankedScores.length)
+      : null;
+    const recommendation_strength_index = round1(validScores.reduce((s, q) => s + rsiMap[q.recommendation_strength], 0) / n);
+    const positiveCount = mentionedScores.filter(s => s.sentiment === 'positive').length;
+    const negativeCount = mentionedScores.filter(s => s.sentiment === 'negative').length;
+    const net_sentiment_score = mentionedScores.length > 0
+      ? round1((positiveCount - negativeCount) / mentionedScores.length * 100)
+      : 0;
+    const discoveryMentioned = discoveryScores.filter(s => s.mentioned).length;
+    const discovery_capture_rate = discoveryScores.length > 0 ? round1(discoveryMentioned / discoveryScores.length * 100) : 0;
+    const competitiveWins = competitiveScores.filter(s => s.context_type === 'primary_rec' || s.recommendation_strength === 'strong').length;
+    const competitive_win_rate = competitiveScores.length > 0 ? round1(competitiveWins / competitiveScores.length * 100) : 0;
+
+    // ── Intent breakdown ──
+    const intentGroups = new Map<string, QueryScore[]>();
+    for (const s of validScores) {
+      const q = completedQueries.find(cq => cq.id === s.query_id);
+      const intent = q?.intent_type || 'unknown';
+      if (!intentGroups.has(intent)) intentGroups.set(intent, []);
+      intentGroups.get(intent)!.push(s);
+    }
+    const intent_breakdown: IntentBreakdown[] = Array.from(intentGroups.entries()).map(([intent, scores]) => {
+      const mentioned = scores.filter(s => s.mentioned);
+      const ranked = scores.filter(s => s.mention_position != null);
+      return {
+        intent_type: intent as any,
+        query_count: scores.length,
+        mention_rate: round1(mentioned.length / scores.length * 100),
+        avg_sentiment: round1(mentioned.length > 0 ? mentioned.reduce((s, q) => s + q.sentiment_score, 0) / mentioned.length : 0),
+        avg_rank: ranked.length > 0 ? round1(ranked.reduce((s, q) => s + (q.mention_position ?? 0), 0) / ranked.length) : null,
+      };
+    });
+
+    // ── Step 3: Verbatim selection (sort by sentiment_score) ─────────────
+
+    const scoredWithText = validScores
+      .filter(s => s.mentioned)
+      .map(s => {
+        const q = completedQueries.find(cq => cq.id === s.query_id);
+        return { ...s, query_text: q?.query_text || '', response_text: q?.response_text || '' };
+      });
+
+    const top_positive_responses: ResponseExcerpt[] = scoredWithText
+      .filter(s => s.sentiment === 'positive')
+      .sort((a, b) => b.sentiment_score - a.sentiment_score)
+      .slice(0, 3)
+      .map(s => ({ query: s.query_text.slice(0, 120), excerpt: s.response_text.slice(0, 150) }));
+
+    const top_negative_responses: ResponseExcerpt[] = scoredWithText
+      .filter(s => s.sentiment === 'negative')
+      .sort((a, b) => a.sentiment_score - b.sentiment_score)
+      .slice(0, 3)
+      .map(s => ({ query: s.query_text.slice(0, 120), excerpt: s.response_text.slice(0, 150) }));
+
+    // ── Step 4: Summary (lightweight Pro call with just KPIs) ────────────
+
+    let summary_text = `${engineName}: AI-SOV ${ai_sov}%, RSI ${recommendation_strength_index}/3.`;
+    try {
+      const summaryResult = await ai.models.generateContent({
+        model: 'gemini-3.1-pro-preview',
+        contents: [{ role: 'user', parts: [{ text: `Engine: ${engineName}\nConcept: ${conceptName}\nAI-SOV: ${ai_sov}%\nFirst Position Rate: ${first_position_rate}%\nTop-3 Rate: ${top3_rate}%\nRSI: ${recommendation_strength_index}/3\nNet Sentiment: ${net_sentiment_score}\nDiscovery Rate: ${discovery_capture_rate}%\nCompetitive Win Rate: ${competitive_win_rate}%\nQueries analyzed: ${n}` }] }],
+        config: {
+          systemInstruction: `Write a concise 2-3 sentence summary of how the AI engine "${engineName}" treats "${conceptName}" based on these KPI scores. Be specific about strengths and weaknesses.`,
+          maxOutputTokens: 256,
+          temperature: 0.3,
+        },
+      });
+      const sumTokens = extractGeminiTokens(summaryResult);
+      totalInputTokens += sumTokens.inputTokens;
+      totalOutputTokens += sumTokens.outputTokens;
+      totalTokens += sumTokens.totalTokens;
+      summary_text = summaryResult.text ?? summary_text;
+    } catch {
+      // Fallback to static summary — non-critical
+    }
+
+    // ── Track tokens ──
     if (scan.user_id) {
-      trackTokens(scan.user_id, 'aio-optimization:synthesis', 'gemini', 'gemini-3.1-pro-preview', synthTokens.inputTokens, synthTokens.outputTokens, synthTokens.totalTokens);
+      trackTokens(scan.user_id, 'aio-optimization:synthesis', 'gemini', 'gemini-3.1-pro-preview', totalInputTokens, totalOutputTokens, totalTokens);
     }
 
-    // Ensure required fields
-    synthesis.engine_id = engineId;
-    synthesis.engine_name = engineName;
-    synthesis.queries_total = queries.length;
-    synthesis.queries_completed = completedQueries.filter(q => q.status === 'complete').length;
-    synthesis.queries_failed = completedQueries.filter(q => q.status === 'error').length;
-
-    // Update per-query scores in the DB if the synthesizer provided them
-    if (synthesis.per_query_scores?.length) {
-      for (const score of synthesis.per_query_scores) {
-        await updateQueryResult(score.query_id, {
-          status: 'complete',
-          mentioned: score.mentioned,
-          mentionPosition: score.mention_position,
-          sentiment: score.sentiment,
-          sentimentScore: score.sentiment_score,
-          recommendationStrength: score.recommendation_strength,
-          contextType: score.context_type,
-        }).catch(err => console.warn(`Failed to update query score ${score.query_id}:`, err));
-      }
+    // ── Update per-query scores in DB ──
+    for (const score of allScores) {
+      await updateQueryResult(score.query_id, {
+        status: 'complete',
+        mentioned: score.mentioned,
+        mentionPosition: score.mention_position,
+        sentiment: score.sentiment,
+        sentimentScore: score.sentiment_score,
+        recommendationStrength: score.recommendation_strength,
+        contextType: score.context_type,
+      }).catch(err => console.warn(`Failed to update query score ${score.query_id}:`, err));
     }
 
-    // Remove per_query_scores before saving (too large for the synthesis column)
-    const { per_query_scores: _, ...synthesisData } = synthesis;
+    // ── Build and save synthesis ──
+    const synthesis: EngineSynthesis = {
+      engine_id: engineId,
+      engine_name: engineName,
+      queries_total: queries.length,
+      queries_completed: completedQueries.filter(q => q.status === 'complete').length,
+      queries_failed: completedQueries.filter(q => q.status === 'error').length,
+      ai_sov,
+      first_position_rate,
+      top3_rate,
+      avg_rank_position,
+      recommendation_strength_index,
+      net_sentiment_score,
+      discovery_capture_rate,
+      competitive_win_rate,
+      intent_breakdown,
+      top_positive_responses,
+      top_negative_responses,
+      summary_text,
+    };
 
-    // Save synthesis
-    await saveScanEngineSynthesis(engineJobId, synthesisData as EngineSynthesis);
+    await saveScanEngineSynthesis(engineJobId, synthesis);
 
-    log.info('synthesis.complete', { function_name: 'synthesize-engine-background', user_id: userId || scan.user_id, user_email: userEmail || scan.user_email, entity_type: 'scan', entity_id: engineJobId, correlation_id: scanId, ai_provider: 'gemini', ai_model: 'gemini-3.1-pro-preview', duration_ms: Date.now() - startTime, ai_input_tokens: synthTokens.inputTokens, ai_output_tokens: synthTokens.outputTokens, ai_total_tokens: synthTokens.totalTokens, meta: { engine_id: engineId, ai_sov: synthesis.ai_sov } });
-    console.log(`Synthesis complete for ${engineName}: AI-SOV=${synthesis.ai_sov}%, RSI=${synthesis.recommendation_strength_index}`);
+    log.info('synthesis.complete', { function_name: 'synthesize-engine-background', user_id: userId || scan.user_id, user_email: userEmail || scan.user_email, entity_type: 'scan', entity_id: engineJobId, correlation_id: scanId, ai_provider: 'gemini', ai_model: 'gemini-3.1-pro-preview', duration_ms: Date.now() - startTime, ai_input_tokens: totalInputTokens, ai_output_tokens: totalOutputTokens, ai_total_tokens: totalTokens, meta: { engine_id: engineId, ai_sov, batches: batches.length } });
+    console.log(`Synthesis complete for ${engineName}: AI-SOV=${ai_sov}%, RSI=${recommendation_strength_index} (${batches.length} batches)`);
 
-    // Check if all engines are done and trigger review
     await checkAndTriggerReview(scanId, userId, userEmail);
 
   } catch (err) {
@@ -189,15 +321,16 @@ export default async (req: Request) => {
   return new Response('Accepted', { status: 202 });
 };
 
-// Background function: Netlify v2 detects this from the `-background` filename suffix.
-
 // ── Helpers ──────────────────────────────────────────────────────────────────
+
+function round1(n: number): number {
+  return Math.round(n * 10) / 10;
+}
 
 async function checkAndTriggerReview(scanId: string, userId?: string, userEmail?: string | null) {
   const allSynthesized = await areAllEnginesSynthesized(scanId);
   if (!allSynthesized) return;
 
-  // ATOMIC: only the first synthesis to flip synthesizing→reviewing wins (prevents duplicate review tasks)
   const { createClient } = await import('@supabase/supabase-js');
   const supabase = createClient(process.env.SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!);
 
@@ -226,7 +359,6 @@ async function checkAndTriggerReview(scanId: string, userId?: string, userEmail?
     payload: { userId: userId || null, userEmail: userEmail || null, scanConfig: {} },
   });
 
-  // Immediately notify task-worker (fire-and-forget — poller is backup)
   const siteUrl = getAppUrl('aio-optimization', { serverUrl: process.env.URL });
   fetch(`${siteUrl}/.netlify/functions/task-worker`, { method: 'POST' }).catch(() => {});
 }
