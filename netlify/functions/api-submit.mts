@@ -13,7 +13,7 @@ import { getAppUrl } from '@AiDigital-com/design-system/utils';
 const APP_NAME = 'aio-optimization';
 
 // All 5 active engines — each has its own API key env var
-const DEFAULT_ENGINES = ['gemini_free', 'gemini_pro', 'google_sge', 'chatgpt_free', 'chatgpt_pro'];
+const DEFAULT_ENGINES = ['gemini_free', 'gemini_pro', 'google_sge', 'chatgpt_free', 'chatgpt_pro', 'claude'];
 
 function getSupabase() {
   const url = process.env.SUPABASE_URL!;
