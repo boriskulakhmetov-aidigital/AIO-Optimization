@@ -69,6 +69,7 @@ export default async (req: Request) => {
     let completed = 0;
     let failed = 0;
     let totalInputTokens = 0, totalOutputTokens = 0, totalAllTokens = 0;
+    let actualProvider = '', actualModel = '';
 
     // Fire ALL queries in parallel — providers handle their own rate limits,
     // our retry logic handles 429s with exponential backoff.
@@ -95,6 +96,8 @@ export default async (req: Request) => {
             totalOutputTokens += response.usage.outputTokens;
             totalAllTokens += response.usage.totalTokens;
           }
+          if (!actualProvider && response.provider) actualProvider = response.provider;
+          if (!actualModel && response.model) actualModel = response.model;
           await updateQueryResult(query.id, {
             status: response.ok ? 'complete' : 'complete',
             responseText: response.text,
@@ -136,7 +139,7 @@ export default async (req: Request) => {
     // Track token usage for all queries in this engine
     if (body.userId && totalAllTokens > 0) {
       const { trackTokens } = await import('./_shared/access.js');
-      trackTokens(body.userId, `aio-optimization:scan-${engineId}`, 'multi', engineId,
+      trackTokens(body.userId, `aio-optimization:scan-${engineId}`, actualProvider || engineId, actualModel || engineId,
         totalInputTokens, totalOutputTokens, totalAllTokens).catch(() => {});
     }
 
