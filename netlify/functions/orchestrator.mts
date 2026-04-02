@@ -112,7 +112,7 @@ export default async (req: Request) => {
           ai_thinking_tokens: result.usage.thinkingTokens,
         });
         trackTokens(userId, 'aio-optimization:orchestrator', llm.provider, llm.model,
-          result.usage.inputTokens, result.usage.outputTokens, result.usage.totalTokens);
+          result.usage.inputTokens, result.usage.outputTokens, result.usage.totalTokens, result.usage.thinkingTokens);
         emit({ type: 'done' });
       } catch (err) {
         console.error('Orchestrator error:', err);
