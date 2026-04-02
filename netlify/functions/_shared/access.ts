@@ -20,11 +20,12 @@ export async function trackTokens(
   inputTokens: number,
   outputTokens: number,
   totalTokens: number,
+  thinkingTokens?: number,
 ) {
   if (!userId || totalTokens === 0) return;
   const orgId = await getUserOrgId(supabase, userId);
   const source: AccessSource = detectSource(userId);
   await logTokenUsage(supabase, {
-    userId, orgId, app, source, aiProvider, aiModel, inputTokens, outputTokens, totalTokens,
+    userId, orgId, app, source, aiProvider, aiModel, inputTokens, outputTokens, totalTokens, thinkingTokens,
   });
 }
