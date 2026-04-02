@@ -1,4 +1,4 @@
-import { GoogleGenAI } from '@google/genai';
+import { createLLMProvider } from '@AiDigital-com/design-system/server';
 import {
   getScanEngine, getQueriesForEngine, updateQueryResult,
   saveScanEngineSynthesis, updateScanEngineStatus,
@@ -97,7 +97,7 @@ export default async (req: Request) => {
       !q.response_text || q.response_text.includes('[PLACEHOLDER') || q.response_text.includes('API key not configured')
     );
 
-    const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY! });
+    const llm = createLLMProvider('gemini', process.env.GEMINI_API_KEY!, 'analysis');
     const conceptName = scan.concept_name;
     let totalInputTokens = 0, totalOutputTokens = 0, totalTokens = 0;
 
@@ -130,24 +130,19 @@ Be precise. Return the array of scores.`;
           `--- Query (id: ${q.id}, intent: ${q.intent_type}) ---\nQ: ${q.query_text}\nA: ${q.response_text || '(no response)'}`
         ).join('\n\n');
 
-        const result = await ai.models.generateContent({
-          model: 'gemini-3.1-pro-preview',
-          contents: [{ role: 'user', parts: [{ text: batchText }] }],
-          config: {
-            systemInstruction: batchSystem,
-            maxOutputTokens: 8192,
-            temperature: 0.2,
-            responseMimeType: 'application/json',
-            responseSchema: QUERY_SCORE_SCHEMA,
-          },
+        const { text, usage } = await llm.generateContent({
+          system: batchSystem,
+          userParts: [{ text: batchText }],
+          maxTokens: 8192,
+          jsonMode: true,
+          responseSchema: QUERY_SCORE_SCHEMA,
         });
 
-        const tokens = extractGeminiTokens(result);
-        totalInputTokens += tokens.inputTokens;
-        totalOutputTokens += tokens.outputTokens;
-        totalTokens += tokens.totalTokens;
+        totalInputTokens += usage.inputTokens;
+        totalOutputTokens += usage.outputTokens;
+        totalTokens += usage.totalTokens;
 
-        return JSON.parse(result.text ?? '[]') as QueryScore[];
+        return JSON.parse(text ?? '[]') as QueryScore[];
       })
     );
 
@@ -248,19 +243,14 @@ Be precise. Return the array of scores.`;
 
     let summary_text = `${engineName}: AI-SOV ${ai_sov}%, RSI ${recommendation_strength_index}/3.`;
     try {
-      const summaryResult = await ai.models.generateContent({
-        model: 'gemini-3.1-pro-preview',
-        contents: [{ role: 'user', parts: [{ text: `Engine: ${engineName}\nConcept: ${conceptName}\nAI-SOV: ${ai_sov}%\nFirst Position Rate: ${first_position_rate}%\nTop-3 Rate: ${top3_rate}%\nRSI: ${recommendation_strength_index}/3\nNet Sentiment: ${net_sentiment_score}\nDiscovery Rate: ${discovery_capture_rate}%\nCompetitive Win Rate: ${competitive_win_rate}%\nQueries analyzed: ${n}` }] }],
-        config: {
-          systemInstruction: `Write a concise 2-3 sentence summary of how the AI engine "${engineName}" treats "${conceptName}" based on these KPI scores. Be specific about strengths and weaknesses.`,
-          maxOutputTokens: 256,
-          temperature: 0.3,
-        },
+      const summaryResult = await llm.generateContent({
+        system: `Write a concise 2-3 sentence summary of how the AI engine "${engineName}" treats "${conceptName}" based on these KPI scores. Be specific about strengths and weaknesses.`,
+        userParts: [{ text: `Engine: ${engineName}\nConcept: ${conceptName}\nAI-SOV: ${ai_sov}%\nFirst Position Rate: ${first_position_rate}%\nTop-3 Rate: ${top3_rate}%\nRSI: ${recommendation_strength_index}/3\nNet Sentiment: ${net_sentiment_score}\nDiscovery Rate: ${discovery_capture_rate}%\nCompetitive Win Rate: ${competitive_win_rate}%\nQueries analyzed: ${n}` }],
+        maxTokens: 256,
       });
-      const sumTokens = extractGeminiTokens(summaryResult);
-      totalInputTokens += sumTokens.inputTokens;
-      totalOutputTokens += sumTokens.outputTokens;
-      totalTokens += sumTokens.totalTokens;
+      totalInputTokens += summaryResult.usage.inputTokens;
+      totalOutputTokens += summaryResult.usage.outputTokens;
+      totalTokens += summaryResult.usage.totalTokens;
       summary_text = summaryResult.text ?? summary_text;
     } catch {
       // Fallback to static summary — non-critical

@@ -1,4 +1,4 @@
-import { GoogleGenAI } from '@google/genai';
+import { createLLMProvider } from '@AiDigital-com/design-system/server';
 import { requireAuthOrEmbed } from './_shared/auth.js';
 import { buildQueryGeneratorPrompt } from './_shared/queryGeneratorPrompt.js';
 import { log } from './_shared/logger.js';
@@ -68,36 +68,31 @@ export default async (req: Request) => {
       queryCount: clampedCount,
     });
 
-    const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY! });
+    const llm = createLLMProvider('gemini', process.env.GEMINI_API_KEY!, 'fast');
 
     // Retry up to 2 times on parse failures or transient errors
     let queries: GeneratedQuery[] = [];
     let lastError = '';
     for (let attempt = 0; attempt < 3; attempt++) {
       try {
-        const result = await ai.models.generateContent({
-          model: 'gemini-3-flash-preview',
-          contents: [{ role: 'user', parts: [{ text: prompt }] }],
-          config: {
-            maxOutputTokens: 4096,
-            temperature: 0.9 + attempt * 0.05,  // slightly vary on retry
-            responseMimeType: 'application/json',
-            responseSchema: {
-              type: 'array',
-              items: {
-                type: 'object',
-                properties: {
-                  text: { type: 'string' },
-                  intent_type: { type: 'string' },
-                  intent_subtype: { type: 'string' },
-                },
-                required: ['text', 'intent_type'],
+        const { text: responseText } = await llm.generateContent({
+          system: 'Generate search queries as a JSON array.',
+          userParts: [{ text: prompt }],
+          maxTokens: 4096,
+          jsonMode: true,
+          responseSchema: {
+            type: 'array',
+            items: {
+              type: 'object',
+              properties: {
+                text: { type: 'string' },
+                intent_type: { type: 'string' },
+                intent_subtype: { type: 'string' },
               },
+              required: ['text', 'intent_type'],
             },
           },
         });
-
-        const responseText = result.text ?? '';
 
         // Parse the JSON array of queries
         try {
