@@ -15,8 +15,8 @@
  * - synthesize_engine: Run Gemini Pro synthesis for one engine
  * - review: Cross-engine review via Gemini Pro
  */
-import { GoogleGenAI } from '@google/genai';
 import { createClient } from '@supabase/supabase-js';
+import { createLLMProvider } from '@AiDigital-com/design-system/server';
 import { buildQueryGeneratorPrompt } from './_shared/queryGeneratorPrompt.js';
 import {
   createScan, updateScanStatus, createScanEngine,
@@ -25,7 +25,7 @@ import {
 import { getEngine } from './_shared/engineRegistry.js';
 import { log } from './_shared/logger.js';
 import { trackTokens } from './_shared/access.js';
-import { extractGeminiTokens, getAppUrl } from '@AiDigital-com/design-system/utils';
+import { getAppUrl } from '@AiDigital-com/design-system/utils';
 import type { GeneratedQuery, EngineId } from './_shared/types.js';
 import { QUERY_COUNT_MIN, QUERY_COUNT_MAX, QUERY_COUNT_DEFAULT } from './_shared/constants.js';
 
@@ -189,51 +189,49 @@ async function handleGenerateQueries(supabase: any, scanId: string, payload: any
     queryCount: clampedCount,
   });
 
-  const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY! });
+  const llm = createLLMProvider('gemini', process.env.GEMINI_API_KEY!, 'fast');
   let queries: GeneratedQuery[] = [];
   let lastError = '';
+  const startTime = Date.now();
 
   for (let attempt = 0; attempt < 3; attempt++) {
     try {
-      // 30s timeout — Gemini sometimes hangs on generateContent
-      const result = await Promise.race([
-        ai.models.generateContent({
-          model: 'gemini-3-flash-preview',
-          contents: [{ role: 'user', parts: [{ text: prompt }] }],
-          config: {
-            maxOutputTokens: 4096,
-            temperature: 0.9 + attempt * 0.05,
-            responseMimeType: 'application/json',
-            responseSchema: {
-              type: 'array',
-              items: {
-                type: 'object',
-                properties: {
-                  text: { type: 'string' },
-                  intent_type: { type: 'string' },
-                  intent_subtype: { type: 'string' },
-                },
-                required: ['text', 'intent_type'],
+      const { text, usage } = await Promise.race([
+        llm.generateContent({
+          system: 'Generate search queries as a JSON array.',
+          userParts: [{ text: prompt }],
+          maxTokens: 4096,
+          jsonMode: true,
+          responseSchema: {
+            type: 'array',
+            items: {
+              type: 'object',
+              properties: {
+                text: { type: 'string' },
+                intent_type: { type: 'string' },
+                intent_subtype: { type: 'string' },
               },
+              required: ['text', 'intent_type'],
             },
           },
         }),
-        new Promise<never>((_, reject) => setTimeout(() => reject(new Error('Gemini generateContent timed out after 30s')), 30_000)),
+        new Promise<never>((_, reject) => setTimeout(() => reject(new Error('generateContent timed out after 60s')), 60_000)),
       ]);
-      let responseText = result.text ?? '';
-      console.log(`[generate-queries] Attempt ${attempt + 1}: response length ${responseText.length}, starts with: "${responseText.slice(0, 50)}"`);
-      // Strip markdown code fences (```json ... ``` or ``` ... ```)
+
+      console.log(`[generate-queries] Attempt ${attempt + 1}: ${text.length} chars, ${usage.totalTokens} tokens (thinking: ${usage.thinkingTokens || 0})`);
+
+      // Track tokens
+      trackTokens(userId, 'aio-optimization:query-gen', llm.provider, llm.model,
+        usage.inputTokens, usage.outputTokens, usage.totalTokens);
+
+      let responseText = text;
+      // Strip markdown fences
       responseText = responseText.replace(/^```(?:json)?\s*\n?/gim, '').replace(/\n?```\s*$/gim, '').trim();
-      // Strip any text before the first [ (Gemini sometimes adds preamble)
       const firstBracket = responseText.indexOf('[');
-      if (firstBracket > 0 && firstBracket < 200) {
-        responseText = responseText.slice(firstBracket);
-      }
-      // Strip any text after the last ] (Gemini sometimes adds postamble)
+      if (firstBracket > 0 && firstBracket < 200) responseText = responseText.slice(firstBracket);
       const lastBracket = responseText.lastIndexOf(']');
-      if (lastBracket > 0 && lastBracket < responseText.length - 1) {
-        responseText = responseText.slice(0, lastBracket + 1);
-      }
+      if (lastBracket > 0 && lastBracket < responseText.length - 1) responseText = responseText.slice(0, lastBracket + 1);
+
       try {
         queries = JSON.parse(responseText);
         if (!Array.isArray(queries)) {
@@ -242,7 +240,6 @@ async function handleGenerateQueries(supabase: any, scanId: string, payload: any
           else throw new Error('not array');
         }
       } catch {
-        // Try extracting JSON array from surrounding text
         const match = responseText.match(/\[[\s\S]*\]/);
         if (match) {
           try { queries = JSON.parse(match[0]); } catch { lastError = 'Failed to parse extracted array'; continue; }

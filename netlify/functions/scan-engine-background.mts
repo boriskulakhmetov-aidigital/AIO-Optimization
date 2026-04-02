@@ -68,6 +68,7 @@ export default async (req: Request) => {
     const totalQueries = queries.length;
     let completed = 0;
     let failed = 0;
+    let totalInputTokens = 0, totalOutputTokens = 0, totalAllTokens = 0;
 
     // Fire ALL queries in parallel — providers handle their own rate limits,
     // our retry logic handles 429s with exponential backoff.
@@ -89,8 +90,13 @@ export default async (req: Request) => {
         if ('result' in outcome) {
           const response = outcome.result;
           snippetText = response.text;
+          if (response.usage) {
+            totalInputTokens += response.usage.inputTokens;
+            totalOutputTokens += response.usage.outputTokens;
+            totalAllTokens += response.usage.totalTokens;
+          }
           await updateQueryResult(query.id, {
-            status: response.ok ? 'complete' : 'complete', // placeholder responses still count as complete
+            status: response.ok ? 'complete' : 'complete',
             responseText: response.text,
             retryCount: outcome.retries,
           });
@@ -127,7 +133,14 @@ export default async (req: Request) => {
     await updateScanEngineStatus(engineJobId, 'complete');
     await updateJobProgress(scanId, engineId, 'complete', completed, totalQueries);
 
-    log.info('scan.engine.complete', { function_name: 'scan-engine-background', user_id: body.userId, user_email: body.userEmail, entity_type: 'scan', entity_id: engineJobId, correlation_id: scanId, duration_ms: Date.now() - startTime, meta: { engine_id: engineId, completed: completed - failed, failed, total: totalQueries } });
+    // Track token usage for all queries in this engine
+    if (body.userId && totalAllTokens > 0) {
+      const { trackTokens } = await import('./_shared/access.js');
+      trackTokens(body.userId, `aio-optimization:scan-${engineId}`, 'multi', engineId,
+        totalInputTokens, totalOutputTokens, totalAllTokens).catch(() => {});
+    }
+
+    log.info('scan.engine.complete', { function_name: 'scan-engine-background', user_id: body.userId, user_email: body.userEmail, entity_type: 'scan', entity_id: engineJobId, correlation_id: scanId, duration_ms: Date.now() - startTime, ai_input_tokens: totalInputTokens, ai_output_tokens: totalOutputTokens, ai_total_tokens: totalAllTokens, meta: { engine_id: engineId, completed: completed - failed, failed, total: totalQueries } });
     console.log(
       `Engine ${engineId} complete: ${completed - failed}/${totalQueries} ok, ${failed} failed`
     );

@@ -1,40 +1,39 @@
-import { GoogleGenAI } from '@google/genai';
+import { createLLMProvider, type ToolDefinition, type ToolCall } from '@AiDigital-com/design-system/server';
 import { ORCHESTRATOR_SYSTEM_PROMPT } from './_shared/orchestratorPrompt.js';
 import { requireAuthOrEmbed } from './_shared/auth.js';
 import { log } from './_shared/logger.js';
 import { trackTokens } from './_shared/access.js';
-import { extractGeminiTokens } from '@AiDigital-com/design-system/utils';
 
-const DISPATCH_SCAN_TOOL = {
+const DISPATCH_SCAN_TOOL: ToolDefinition = {
   name: 'dispatch_scan',
   description: 'Dispatch the AI search optimization scan once all intake information has been collected from the user.',
   parameters: {
-    type: 'OBJECT' as const,
+    type: 'object',
     properties: {
       concept_type: {
-        type: 'STRING' as const,
+        type: 'string',
         description: 'Type of concept: product, offering, or concept',
         enum: ['product', 'offering', 'concept'],
       },
       concept_name: {
-        type: 'STRING' as const,
+        type: 'string',
         description: 'The specific product, offering, or concept to audit (e.g., "Toyota RAV4")',
       },
       concept_category: {
-        type: 'STRING' as const,
+        type: 'string',
         description: 'Broader category (e.g., "SUV", "Italian Restaurant", "Luxury Watches")',
       },
       concept_context: {
-        type: 'STRING' as const,
+        type: 'string',
         description: 'Additional context: target market, geography, price range, competitors, goals',
       },
       engines: {
-        type: 'ARRAY' as const,
-        items: { type: 'STRING' as const },
+        type: 'array',
+        items: { type: 'string' },
         description: 'AI engines to test. Valid IDs: chatgpt_free, gemini_free, claude, perplexity, copilot, grok_free, meta_ai. Default to ["chatgpt_free","gemini_free","claude","perplexity","copilot"] if user does not specify.',
       },
       query_count: {
-        type: 'INTEGER' as const,
+        type: 'integer',
         description: 'Number of queries per engine. Default 100.',
       },
     },
@@ -64,15 +63,12 @@ export default async (req: Request) => {
   const body = await req.json();
   const { messages = [] } = body;
 
-  const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+  const llm = createLLMProvider('gemini', process.env.GEMINI_API_KEY!, 'fast');
 
-  // Build Gemini contents array from conversation history
-  const contents: Array<{ role: string; parts: unknown[] }> = messages.map(
-    (m: { role: string; content: string }) => ({
-      role: m.role === 'assistant' ? 'model' : 'user',
-      parts: [{ text: m.content }],
-    })
-  );
+  const chatMessages = messages.map((m: { role: string; content: string }) => ({
+    role: m.role as 'user' | 'assistant',
+    content: m.content,
+  }));
 
   const encoder = new TextEncoder();
 
@@ -87,43 +83,40 @@ export default async (req: Request) => {
       }, 15_000);
 
       try {
-        
-        log.info('orchestrator.start', { function_name: 'orchestrator', user_id: userId, user_email: email, ai_provider: 'gemini', ai_model: 'gemini-3-flash-preview', meta: { messageCount: messages?.length } });
-        const timer = log.time('gemini.call', { function_name: 'orchestrator', user_id: userId, user_email: email, ai_provider: 'gemini', ai_model: 'gemini-3-flash-preview' });
+        log.info('orchestrator.start', { function_name: 'orchestrator', user_id: userId, user_email: email, ai_provider: llm.provider, ai_model: llm.model, meta: { messageCount: messages?.length } });
+        const startTime = Date.now();
 
-        const stream = await ai.models.generateContentStream({
-          model: 'gemini-3-flash-preview',
-          contents,
-          config: {
-            systemInstruction: ORCHESTRATOR_SYSTEM_PROMPT,
-            tools: [{ functionDeclarations: [DISPATCH_SCAN_TOOL] }],
-            maxOutputTokens: 2048,
+        const result = await llm.streamChat({
+          system: ORCHESTRATOR_SYSTEM_PROMPT,
+          messages: chatMessages,
+          tools: [DISPATCH_SCAN_TOOL],
+          callbacks: {
+            onText: (text) => emit({ type: 'text_delta', text }),
+            onToolCalls: (calls: ToolCall[]) => {
+              for (const call of calls) {
+                if (call.name === 'dispatch_scan') {
+                  emit({ type: 'scan_dispatch', scanConfig: call.args });
+                }
+              }
+            },
           },
         });
 
-        let lastChunk: any = null;
-        for await (const chunk of stream) {
-          lastChunk = chunk;
-          if (chunk.text) {
-            emit({ type: 'text_delta', text: chunk.text });
-          }
-          const fcs = chunk.functionCalls;
-          if (fcs && fcs.length > 0) {
-            for (const fc of fcs) {
-              if (fc.name === 'dispatch_scan') {
-                emit({ type: 'scan_dispatch', scanConfig: fc.args });
-              }
-            }
-          }
-        }
-
-        const tokens = extractGeminiTokens(lastChunk ?? {});
-        timer.end({ ai_input_tokens: tokens.inputTokens, ai_output_tokens: tokens.outputTokens, ai_total_tokens: tokens.totalTokens });
-        trackTokens(userId, 'aio-optimization:orchestrator', 'gemini', 'gemini-3-flash-preview', tokens.inputTokens, tokens.outputTokens, tokens.totalTokens);
+        log.info('orchestrator.complete', {
+          function_name: 'orchestrator', user_id: userId, user_email: email,
+          duration_ms: Date.now() - startTime,
+          ai_provider: llm.provider, ai_model: llm.model,
+          ai_input_tokens: result.usage.inputTokens,
+          ai_output_tokens: result.usage.outputTokens,
+          ai_total_tokens: result.usage.totalTokens,
+          ai_thinking_tokens: result.usage.thinkingTokens,
+        });
+        trackTokens(userId, 'aio-optimization:orchestrator', llm.provider, llm.model,
+          result.usage.inputTokens, result.usage.outputTokens, result.usage.totalTokens);
         emit({ type: 'done' });
       } catch (err) {
         console.error('Orchestrator error:', err);
-        log.error('orchestrator.error', { function_name: 'orchestrator', user_id: userId, user_email: email, error: err, error_category: 'gemini_api' });
+        log.error('orchestrator.error', { function_name: 'orchestrator', user_id: userId, user_email: email, error: err, error_category: 'ai_api' });
         emit({ type: 'error', message: String(err) });
       } finally {
         clearInterval(keepAliveInterval);

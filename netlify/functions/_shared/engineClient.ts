@@ -17,6 +17,12 @@ export interface EngineResponse {
   text: string;
   ok: boolean;
   error?: string;
+  /** Provider name (e.g., 'gemini', 'openai', 'claude') */
+  provider?: string;
+  /** Model name used for the query */
+  model?: string;
+  /** Token usage from the LLM call */
+  usage?: { inputTokens: number; outputTokens: number; totalTokens: number; thinkingTokens?: number };
 }
 
 // ── Provider base URL map for OpenAI-compatible providers ────────────────────
@@ -49,48 +55,43 @@ export async function queryEngine(
       case 'google':
       case 'anthropic':
       case 'xai': {
-        // These map directly to DS provider names
         const providerName = engine.provider === 'google' ? 'gemini' : engine.provider === 'anthropic' ? 'claude' : engine.provider;
         const llm = createLLMProvider(providerName, apiKey, engine.model);
-        const { text } = await llm.generateContent({
+        const { text, usage } = await llm.generateContent({
           system: 'You are a helpful AI assistant. Answer the query directly.',
           userParts: [{ text: queryText }],
           maxTokens: 2048,
         });
-        return { text, ok: true };
+        return { text, ok: true, provider: llm.provider, model: llm.model, usage };
       }
 
       case 'google_search': {
-        // Gemini with search grounding — uses GeminiProvider directly
-        // because the generic interface doesn't expose tools config
         return queryGeminiWithSearch(apiKey, engine.model, queryText);
       }
 
       case 'openai': {
-        // OpenAI-native (ChatGPT, Copilot)
         const baseUrl = engine.id === 'copilot'
           ? (process.env.AZURE_OPENAI_ENDPOINT ?? 'https://api.openai.com/v1')
           : 'https://api.openai.com/v1';
         const llm = new OpenAIProvider(apiKey, engine.model, baseUrl);
-        const { text } = await llm.generateContent({
+        const { text, usage } = await llm.generateContent({
           system: 'You are a helpful AI assistant. Answer the query directly.',
           userParts: [{ text: queryText }],
           maxTokens: 2048,
         });
-        return { text, ok: true };
+        return { text, ok: true, provider: 'openai', model: engine.model, usage };
       }
 
       case 'perplexity':
       case 'together': {
-        // OpenAI-compatible APIs with custom base URLs
         const baseUrl = OPENAI_BASE_URLS[engine.provider];
         const llm = new OpenAIProvider(apiKey, engine.model, baseUrl);
-        const { text } = await llm.generateContent({
+        const { text, usage } = await llm.generateContent({
           system: 'You are a helpful AI assistant. Answer the query directly.',
           userParts: [{ text: queryText }],
           maxTokens: 2048,
         });
-        return { text, ok: true };
+        return { text, ok: true, provider: engine.provider, model: engine.model, usage };
       }
 
       default:
