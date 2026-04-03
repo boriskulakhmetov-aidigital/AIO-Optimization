@@ -4,7 +4,7 @@ import {
   saveScanReview, saveScanReportData, updateScanStatus,
   getQueriesForScan, writeJobStatus, supabase,
 } from './_shared/supabase.js';
-import { trackUsage, trackTokens } from './_shared/access.js';
+import { trackUsage } from './_shared/access.js';
 import { repairJson } from './_shared/repairJson.js';
 import { getEngineName } from './_shared/engineRegistry.js';
 import { buildReviewerPrompt, formatSynthesesForReview } from './_shared/reviewerPrompt.js';
@@ -73,7 +73,7 @@ export default async (req: Request) => {
     const synthesisInput = formatSynthesesForReview(synthesesForReview);
 
     // Call Gemini Pro for cross-engine review (with retry for transient errors)
-    const llm = createLLMProvider('gemini', process.env.GEMINI_API_KEY!, 'analysis');
+    const llm = createLLMProvider('gemini', process.env.GEMINI_API_KEY!, 'analysis', { supabase });
     let responseText = '';
     let reviewTokens = { inputTokens: 0, outputTokens: 0, totalTokens: 0, thinkingTokens: 0 };
     for (let attempt = 0; attempt < 3; attempt++) {
@@ -83,6 +83,8 @@ export default async (req: Request) => {
           userParts: [{ text: synthesisInput }],
           maxTokens: 65536,
           jsonMode: true,
+          app: 'aio-optimization:review',
+          userId: userId || scan.user_id,
         });
         responseText = result.text;
         reviewTokens = { ...result.usage, thinkingTokens: result.usage.thinkingTokens || 0 };
@@ -94,11 +96,6 @@ export default async (req: Request) => {
         }
         throw retryErr;
       }
-    }
-
-    // Track token usage
-    if (scan.user_id) {
-      trackTokens(scan.user_id, 'aio-optimization:review', llm.provider, llm.model, reviewTokens.inputTokens, reviewTokens.outputTokens, reviewTokens.totalTokens);
     }
 
     // Parse the review JSON (with repairJson fallback for Gemini malformed output)

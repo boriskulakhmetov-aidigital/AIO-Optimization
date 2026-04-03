@@ -24,7 +24,6 @@ import {
 } from './_shared/supabase.js';
 import { getEngine } from './_shared/engineRegistry.js';
 import { log } from './_shared/logger.js';
-import { trackTokens } from './_shared/access.js';
 import { getAppUrl } from '@AiDigital-com/design-system/utils';
 import type { GeneratedQuery, EngineId } from './_shared/types.js';
 import { QUERY_COUNT_MIN, QUERY_COUNT_MAX, QUERY_COUNT_DEFAULT } from './_shared/constants.js';
@@ -119,7 +118,7 @@ async function executeTask(supabase: any, task: any) {
     case 'run_auto_eval': {
       const { executeAutoEval } = await import('@AiDigital-com/design-system/learning');
       const { createLLMProvider } = await import('@AiDigital-com/design-system/server');
-      const llm = createLLMProvider('gemini', process.env.GEMINI_API_KEY!, 'analysis');
+      const llm = createLLMProvider('gemini', process.env.GEMINI_API_KEY!, 'analysis', { supabase });
       const result = await executeAutoEval(supabase, llm, { apiKey: process.env.GEMINI_API_KEY! }, payload);
       if (!result.success) throw new Error(result.error || 'Auto-eval failed');
       return;
@@ -189,7 +188,7 @@ async function handleGenerateQueries(supabase: any, scanId: string, payload: any
     queryCount: clampedCount,
   });
 
-  const llm = createLLMProvider('gemini', process.env.GEMINI_API_KEY!, 'fast');
+  const llm = createLLMProvider('gemini', process.env.GEMINI_API_KEY!, 'fast', { supabase });
   let queries: GeneratedQuery[] = [];
   let lastError = '';
   const startTime = Date.now();
@@ -202,6 +201,8 @@ async function handleGenerateQueries(supabase: any, scanId: string, payload: any
           userParts: [{ text: prompt }],
           maxTokens: 4096,
           jsonMode: true,
+          app: 'aio-optimization:query-gen',
+          userId,
           responseSchema: {
             type: 'array',
             items: {
@@ -219,10 +220,6 @@ async function handleGenerateQueries(supabase: any, scanId: string, payload: any
       ]);
 
       console.log(`[generate-queries] Attempt ${attempt + 1}: ${text.length} chars, ${usage.totalTokens} tokens (thinking: ${usage.thinkingTokens || 0})`);
-
-      // Track tokens
-      trackTokens(userId, 'aio-optimization:query-gen', llm.provider, llm.model,
-        usage.inputTokens, usage.outputTokens, usage.totalTokens);
 
       let responseText = text;
       // Strip markdown fences

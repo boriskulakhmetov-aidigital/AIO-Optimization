@@ -4,14 +4,12 @@ import {
   saveScanEngineSynthesis, updateScanEngineStatus,
   getScanEngines, areAllEnginesSynthesized,
   getScanById, updateScanStatus, createScanReview,
-  writeJobStatus,
+  writeJobStatus, supabase,
 } from './_shared/supabase.js';
 import { getEngineName } from './_shared/engineRegistry.js';
 import type { EngineId, EngineSynthesis, IntentBreakdown, ResponseExcerpt } from './_shared/types.js';
 import { log } from './_shared/logger.js';
 import { getAppUrl } from '@AiDigital-com/design-system/utils';
-import { trackTokens } from './_shared/access.js';
-import { extractGeminiTokens } from '@AiDigital-com/design-system/utils';
 
 /* ── Per-query score (from LLM batch evaluation) ─────────────────────────── */
 
@@ -97,9 +95,9 @@ export default async (req: Request) => {
       !q.response_text || q.response_text.includes('[PLACEHOLDER') || q.response_text.includes('API key not configured')
     );
 
-    const llm = createLLMProvider('gemini', process.env.GEMINI_API_KEY!, 'analysis');
+    const llm = createLLMProvider('gemini', process.env.GEMINI_API_KEY!, 'analysis', { supabase });
     const conceptName = scan.concept_name;
-    let totalInputTokens = 0, totalOutputTokens = 0, totalTokens = 0;
+    let totalInputTokens = 0, totalOutputTokens = 0, totalTokens = 0, totalThinkingTokens = 0;
 
     // ── Step 1: Parallel batch evaluation ────────────────────────────────
     // Split valid queries into batches, evaluate each in parallel with Pro + responseSchema
@@ -136,11 +134,14 @@ Be precise. Return the array of scores.`;
           maxTokens: 8192,
           jsonMode: true,
           responseSchema: QUERY_SCORE_SCHEMA,
+          app: 'aio-optimization:synthesis',
+          userId: userId || scan.user_id,
         });
 
         totalInputTokens += usage.inputTokens;
         totalOutputTokens += usage.outputTokens;
         totalTokens += usage.totalTokens;
+        totalThinkingTokens += usage.thinkingTokens || 0;
 
         return JSON.parse(text ?? '[]') as QueryScore[];
       })
@@ -247,18 +248,16 @@ Be precise. Return the array of scores.`;
         system: `Write a concise 2-3 sentence summary of how the AI engine "${engineName}" treats "${conceptName}" based on these KPI scores. Be specific about strengths and weaknesses.`,
         userParts: [{ text: `Engine: ${engineName}\nConcept: ${conceptName}\nAI-SOV: ${ai_sov}%\nFirst Position Rate: ${first_position_rate}%\nTop-3 Rate: ${top3_rate}%\nRSI: ${recommendation_strength_index}/3\nNet Sentiment: ${net_sentiment_score}\nDiscovery Rate: ${discovery_capture_rate}%\nCompetitive Win Rate: ${competitive_win_rate}%\nQueries analyzed: ${n}` }],
         maxTokens: 256,
+        app: 'aio-optimization:synthesis',
+        userId: userId || scan.user_id,
       });
       totalInputTokens += summaryResult.usage.inputTokens;
       totalOutputTokens += summaryResult.usage.outputTokens;
       totalTokens += summaryResult.usage.totalTokens;
+      totalThinkingTokens += summaryResult.usage.thinkingTokens || 0;
       summary_text = summaryResult.text ?? summary_text;
     } catch {
       // Fallback to static summary — non-critical
-    }
-
-    // ── Track tokens ──
-    if (scan.user_id) {
-      trackTokens(scan.user_id, 'aio-optimization:synthesis', 'gemini', 'gemini-3.1-pro-preview', totalInputTokens, totalOutputTokens, totalTokens);
     }
 
     // ── Update per-query scores in DB ──
@@ -297,7 +296,7 @@ Be precise. Return the array of scores.`;
 
     await saveScanEngineSynthesis(engineJobId, synthesis);
 
-    log.info('synthesis.complete', { function_name: 'synthesize-engine-background', user_id: userId || scan.user_id, user_email: userEmail || scan.user_email, entity_type: 'scan', entity_id: engineJobId, correlation_id: scanId, ai_provider: 'gemini', ai_model: 'gemini-3.1-pro-preview', duration_ms: Date.now() - startTime, ai_input_tokens: totalInputTokens, ai_output_tokens: totalOutputTokens, ai_total_tokens: totalTokens, meta: { engine_id: engineId, ai_sov, batches: batches.length } });
+    log.info('synthesis.complete', { function_name: 'synthesize-engine-background', user_id: userId || scan.user_id, user_email: userEmail || scan.user_email, entity_type: 'scan', entity_id: engineJobId, correlation_id: scanId, ai_provider: 'gemini', ai_model: 'gemini-3.1-pro-preview', duration_ms: Date.now() - startTime, ai_input_tokens: totalInputTokens, ai_output_tokens: totalOutputTokens, ai_total_tokens: totalTokens, ai_thinking_tokens: totalThinkingTokens, meta: { engine_id: engineId, ai_sov, batches: batches.length } });
     console.log(`Synthesis complete for ${engineName}: AI-SOV=${ai_sov}%, RSI=${recommendation_strength_index} (${batches.length} batches)`);
 
     await checkAndTriggerReview(scanId, userId, userEmail);

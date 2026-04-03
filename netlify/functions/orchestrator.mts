@@ -2,7 +2,7 @@ import { createLLMProvider, type ToolDefinition, type ToolCall } from '@AiDigita
 import { ORCHESTRATOR_SYSTEM_PROMPT } from './_shared/orchestratorPrompt.js';
 import { requireAuthOrEmbed } from './_shared/auth.js';
 import { log } from './_shared/logger.js';
-import { trackTokens } from './_shared/access.js';
+import { supabase } from './_shared/supabase.js';
 
 const DISPATCH_SCAN_TOOL: ToolDefinition = {
   name: 'dispatch_scan',
@@ -63,7 +63,7 @@ export default async (req: Request) => {
   const body = await req.json();
   const { messages = [] } = body;
 
-  const llm = createLLMProvider('gemini', process.env.GEMINI_API_KEY!, 'fast');
+  const llm = createLLMProvider('gemini', process.env.GEMINI_API_KEY!, 'fast', { supabase });
 
   const chatMessages = messages.map((m: { role: string; content: string }) => ({
     role: m.role as 'user' | 'assistant',
@@ -90,6 +90,8 @@ export default async (req: Request) => {
           system: ORCHESTRATOR_SYSTEM_PROMPT,
           messages: chatMessages,
           tools: [DISPATCH_SCAN_TOOL],
+          app: 'aio-optimization:orchestrator',
+          userId,
           callbacks: {
             onText: (text) => emit({ type: 'text_delta', text }),
             onToolCalls: (calls: ToolCall[]) => {
@@ -111,8 +113,6 @@ export default async (req: Request) => {
           ai_total_tokens: result.usage.totalTokens,
           ai_thinking_tokens: result.usage.thinkingTokens,
         });
-        trackTokens(userId, 'aio-optimization:orchestrator', llm.provider, llm.model,
-          result.usage.inputTokens, result.usage.outputTokens, result.usage.totalTokens, result.usage.thinkingTokens);
         emit({ type: 'done' });
       } catch (err) {
         console.error('Orchestrator error:', err);
