@@ -132,6 +132,7 @@ export default async (req: Request, _context: Context) => {
     const publicUrl = `${process.env.SUPABASE_URL}/storage/v1/object/public/audit-assets/${storagePath}`;
     await supabase.from(TABLE).update({ pdf_url: publicUrl }).eq('id', sessionId);
 
+// Track PDF generation cost (1 output token = 1 PDF)    const { logTokenUsage, detectSource } = await import('@AiDigital-com/design-system/logger');    const { getUserOrgId } = await import('@AiDigital-com/design-system/access');    const orgId = await getUserOrgId(supabase as any, userId).catch(() => null);    logTokenUsage(supabase as any, {      userId, orgId, app: `aio-optimization:pdf`, source: detectSource(userId),      aiProvider: provider, aiModel: provider === 'pdfshift' ? 'pdf-convert' : 'pdf-render',      inputTokens: 0, outputTokens: 1, totalTokens: 1,    }).catch(() => {});
     return Response.json({ pdf_url: publicUrl, cached: false, provider });
   } catch (err: any) {
     console.error('generate-pdf error:', err);
