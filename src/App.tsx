@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, createContext, useContext, useRef } from 'react';
-import { AppShell, ChatPanel, useScanProgress, useJobStatus } from '@AiDigital-com/design-system';
-import type { AppShellContext, SupabaseClient } from '@AiDigital-com/design-system';
+import { AppShell, ChatPanel, useScanProgress, useJobStatus, useSessionPersistence } from '@AiDigital-com/design-system';
+import type { AppShellContext, SupabaseClient, UseSessionPersistenceReturn } from '@AiDigital-com/design-system';
 import { createClient } from '@supabase/supabase-js';
 import { SignIn, UserButton, useAuth } from '@clerk/react';
 import type { AppPhase } from './lib/types';
@@ -66,13 +66,14 @@ function ScanBridgeProvider() {
   );
 
   // ── Session persistence ──
-  const session = useSessionPersistence(supabase, null, userId ?? null, {
+  const session = useSessionPersistence(supabase, authFetch, userId ?? null, {
     table: 'scans',
     app: 'aio-optimization',
     titleField: 'concept_name',
     mergeConfig: {},
     defaultFields: { status: 'chatting' },
     mergeEndpoint: '/.netlify/functions/save-session',
+    sessionsEndpoint: '/.netlify/functions/get-sessions',
   });
 
   // Keep scanId in sync with session
