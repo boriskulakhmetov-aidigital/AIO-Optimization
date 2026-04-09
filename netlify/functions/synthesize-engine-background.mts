@@ -345,9 +345,9 @@ async function checkAndTriggerReview(scanId: string, userId?: string, userEmail?
     app: 'aio-optimization',
     scan_id: scanId,
     task_type: 'review',
-    payload: { userId: userId || null, userEmail: userEmail || null, scanConfig: {} },
+    payload: { scanId, userId: userId || null, userEmail: userEmail || null, scanConfig: {} },
   });
 
   const siteUrl = getAppUrl('aio-optimization', { serverUrl: process.env.URL });
-  fetch(`${siteUrl}/.netlify/functions/task-worker`, { method: 'POST' }).catch(() => {});
+  await fetch(`${siteUrl}/.netlify/functions/task-worker`, { method: 'POST' }).catch(() => {});
 }
