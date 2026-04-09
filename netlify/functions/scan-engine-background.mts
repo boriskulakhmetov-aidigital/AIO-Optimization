@@ -171,26 +171,23 @@ export default async (req: Request) => {
       console.log(`All engines complete for scan ${scanId} — creating synthesis tasks`);
       await writeJobStatus(scanId, { status: 'streaming', meta: { scan_id: scanId, phase: 'synthesizing' } });
 
-      // Create synthesize_engine tasks for each engine
-      for (const eng of allEngines) {
-        if (eng.status === 'error') continue; // skip errored engines
-        await supabase.from('pipeline_tasks').insert({
-          app: 'aio-optimization',
-          scan_id: scanId,
-          task_type: 'synthesize_engine',
-          payload: {
-            engineId: eng.engine_id,
-            engineJobId: eng.id,
-            userId: body.userId,
-            userEmail: body.userEmail,
-            scanConfig: { concept_name: body.conceptName, concept_type: body.conceptType, concept_category: body.conceptCategory, concept_context: body.conceptContext },
-          },
+      // Fire synthesis functions directly in parallel (not through sequential task-worker)
+      const siteUrl = getAppUrl("aio-optimization", { serverUrl: process.env.URL });
+      const synthPromises = allEngines
+        .filter(eng => eng.status !== "error")
+        .map(async (eng) => {
+          try {
+            await fetch(siteUrl + "/.netlify/functions/synthesize-engine-background", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ scanId, engineId: eng.engine_id, engineJobId: eng.id, userId: body.userId, userEmail: body.userEmail }),
+            });
+            console.log("Fired synthesis for " + eng.engine_id);
+          } catch (err) {
+            console.warn("Failed to fire synthesis for " + eng.engine_id + ":", err);
+          }
         });
-      }
-
-      // Immediately notify task-worker (fire-and-forget — poller is backup)
-      const siteUrl = getAppUrl('aio-optimization', { serverUrl: process.env.URL });
-      fetch(`${siteUrl}/.netlify/functions/task-worker`, { method: 'POST' }).catch(() => {});
+      await Promise.all(synthPromises);
     }
 
   } catch (err) {
