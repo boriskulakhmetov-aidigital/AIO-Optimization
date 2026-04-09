@@ -111,38 +111,15 @@ function ScanBridgeProvider() {
     });
 
     try {
-      console.log('[AIO] Step 1: Generating queries...', { concept_name: resolvedConfig.concept_name, engines: resolvedConfig.engines, query_count: resolvedConfig.query_count });
-      const genRes = await authFetch('/.netlify/functions/generate-queries', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          concept_type: resolvedConfig.concept_type,
-          concept_name: resolvedConfig.concept_name,
-          concept_category: resolvedConfig.concept_category,
-          concept_context: resolvedConfig.concept_context,
-          engines: resolvedConfig.engines,
-          query_count: resolvedConfig.query_count,
-        }),
-      });
-      if (!genRes.ok) {
-        const errText = await genRes.text();
-        console.error('[AIO] generate-queries failed:', genRes.status, errText);
-        setErrorDetail(`Generate queries failed (${genRes.status}): ${errText}`);
-        setPhase('error');
-        return;
-      }
-      const genData = await genRes.json();
-      console.log('[AIO] Step 1 complete:', genData.total_queries, 'queries generated');
-
-      console.log('[AIO] Step 2: Dispatching scan...', { scanId: sessionId, engines: resolvedConfig.engines.length, queries: genData.queries?.length });
+      console.log('[AIO] Dispatching via standard pipeline...', { concept_name: resolvedConfig.concept_name, engines: resolvedConfig.engines, query_count: resolvedConfig.query_count });
       setPhase('scanning');
 
-      const dispatchRes = await authFetch('/.netlify/functions/dispatch-scan', {
+      const dispatchRes = await authFetch('/.netlify/functions/dispatch-audit', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          scanId: sessionId,
-          config: {
+          jobId: sessionId,
+          intakeSummary: {
             concept_type: resolvedConfig.concept_type,
             concept_name: resolvedConfig.concept_name,
             concept_category: resolvedConfig.concept_category,
@@ -150,19 +127,16 @@ function ScanBridgeProvider() {
             engines: resolvedConfig.engines,
             query_count: resolvedConfig.query_count,
           },
-          queries: genData.queries,
-          messages: messages.map(m => ({ role: m.role, content: m.content })),
         }),
       });
       if (!dispatchRes.ok) {
         const errText = await dispatchRes.text();
-        console.error('[AIO] dispatch-scan failed:', dispatchRes.status, errText);
-        setErrorDetail(`Dispatch scan failed (${dispatchRes.status}): ${errText}`);
+        console.error('[AIO] dispatch-audit failed:', dispatchRes.status, errText);
+        setErrorDetail(`Dispatch failed (${dispatchRes.status}): ${errText}`);
         setPhase('error');
         return;
       }
-      const dispatchData = await dispatchRes.json();
-      console.log('[AIO] Step 2 complete:', dispatchData);
+      console.log('[AIO] Dispatch complete — pipeline running');
       session.refreshSessions();
     } catch (err) {
       console.error('[AIO] Dispatch error:', err);
