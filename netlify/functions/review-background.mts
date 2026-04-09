@@ -180,7 +180,14 @@ export default async (req: Request) => {
 
     // Also write assembled markdown to scans.report for public report page fallback
     const markdownReport = assembleMarkdownReport(scan, review);
-    await supabase.from('scans').update({ report: markdownReport }).eq('id', scanId);
+    // Auto-generate share_token on completion
+    const { data: existingScan } = await supabase.from('scans').select('share_token').eq('id', scanId).maybeSingle();
+    const scanUpdate: Record<string, unknown> = { report: markdownReport };
+    if (!existingScan?.share_token) {
+      scanUpdate.share_token = crypto.randomUUID();
+      scanUpdate.is_public = true;
+    }
+    await supabase.from('scans').update(scanUpdate).eq('id', scanId);
 
     // Write job status for Realtime — signals frontend to fetch report
     await writeJobStatus(scanId, { status: 'complete', completed_at: new Date().toISOString() });
