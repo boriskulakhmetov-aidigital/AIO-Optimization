@@ -38,7 +38,9 @@ if (isEmbed) {
   ReactDOM.createRoot(document.getElementById('root')!).render(
     <React.StrictMode>
       {isPublicReport ? (
-        <PublicReportPage />
+        <ClerkProvider publishableKey={publishableKey}>
+          <PublicReportPage />
+        </ClerkProvider>
       ) : (
         <ClerkProvider publishableKey={publishableKey}>
           <App />
