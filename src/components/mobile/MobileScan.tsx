@@ -33,6 +33,8 @@ const ENGINE_META: Record<string, { name: string; gradient: string }> = {
   chatgpt_free: { name: 'ChatGPT',       gradient: 'linear-gradient(135deg, #10A37F, #0D8A6A)' },
   chatgpt_pro:  { name: 'ChatGPT Pro',   gradient: 'linear-gradient(135deg, #6C63FF, #4A42D4)' },
   claude:       { name: 'Claude',         gradient: 'linear-gradient(135deg, #D946A8, #A855F7)' },
+  grok_free:    { name: 'Grok',           gradient: 'linear-gradient(135deg, #1DA1F2, #0D7EC4)' },
+  grok_pro:     { name: 'Grok Pro',       gradient: 'linear-gradient(135deg, #0D7EC4, #0A5A8E)' },
   perplexity:   { name: 'Perplexity',     gradient: 'linear-gradient(135deg, #20B2AA, #2E8B8A)' },
   copilot:      { name: 'Copilot',        gradient: 'linear-gradient(135deg, #258FDB, #0F6CBD)' },
 };
