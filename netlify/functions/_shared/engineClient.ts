@@ -52,11 +52,37 @@ export async function queryEngine(
 
   try {
     switch (engine.provider) {
-      case 'google':
-      case 'anthropic':
+      case 'google': {
+        if (engine.searchEnabled) {
+          return queryGeminiWithSearch(apiKey, engine.model, queryText);
+        }
+        const llm = createLLMProvider('gemini', apiKey, engine.model);
+        const { text, usage } = await llm.generateContent({
+          system: 'You are a helpful AI assistant. Answer the query directly.',
+          userParts: [{ text: queryText }],
+          maxTokens: 2048,
+        });
+        return { text, ok: true, provider: llm.provider, model: llm.model, usage };
+      }
+
+      case 'anthropic': {
+        if (engine.searchEnabled) {
+          return queryClaudeWithSearch(apiKey, engine.model, queryText);
+        }
+        const llm = createLLMProvider('claude', apiKey, engine.model);
+        const { text, usage } = await llm.generateContent({
+          system: 'You are a helpful AI assistant. Answer the query directly.',
+          userParts: [{ text: queryText }],
+          maxTokens: 2048,
+        });
+        return { text, ok: true, provider: llm.provider, model: llm.model, usage };
+      }
+
       case 'xai': {
-        const providerName = engine.provider === 'google' ? 'gemini' : engine.provider === 'anthropic' ? 'claude' : engine.provider;
-        const llm = createLLMProvider(providerName, apiKey, engine.model);
+        if (engine.searchEnabled) {
+          return queryGrokWithSearch(apiKey, engine.model, queryText);
+        }
+        const llm = createLLMProvider('xai', apiKey, engine.model);
         const { text, usage } = await llm.generateContent({
           system: 'You are a helpful AI assistant. Answer the query directly.',
           userParts: [{ text: queryText }],
@@ -127,6 +153,100 @@ async function queryGeminiWithSearch(
     return { text: result.text ?? '', ok: true };
   } catch (err) {
     return { text: '', ok: false, error: `Google SGE error: ${err}` };
+  }
+}
+
+// ── Anthropic Claude with Web Search ─────────────────────────────────────────
+// Uses the web_search_20250305 server-side tool. Returns text content blocks only.
+
+async function queryClaudeWithSearch(
+  apiKey: string,
+  model: string,
+  queryText: string,
+): Promise<EngineResponse> {
+  try {
+    const response = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': apiKey,
+        'anthropic-version': '2023-06-01',
+        'anthropic-beta': 'web-search-2025-03-05',
+      },
+      body: JSON.stringify({
+        model,
+        max_tokens: 2048,
+        system: 'You are a helpful AI assistant. Answer the query directly.',
+        messages: [{ role: 'user', content: queryText }],
+        tools: [{ type: 'web_search_20250305', name: 'web_search', max_uses: 3 }],
+      }),
+    });
+
+    if (!response.ok) {
+      const err = await response.text();
+      return { text: '', ok: false, error: `Claude search error: ${response.status} ${err}` };
+    }
+
+    const data = await response.json() as { content?: Array<{ type: string; text?: string }>; usage?: { input_tokens?: number; output_tokens?: number } };
+    const text = (data.content ?? [])
+      .filter(b => b.type === 'text')
+      .map(b => b.text ?? '')
+      .join('\n');
+
+    const usage = data.usage ? {
+      inputTokens: data.usage.input_tokens ?? 0,
+      outputTokens: data.usage.output_tokens ?? 0,
+      totalTokens: (data.usage.input_tokens ?? 0) + (data.usage.output_tokens ?? 0),
+    } : undefined;
+
+    return { text, ok: true, provider: 'anthropic', model, usage };
+  } catch (err) {
+    return { text: '', ok: false, error: `Claude search error: ${err}` };
+  }
+}
+
+// ── xAI Grok with Web Search ──────────────────────────────────────────────────
+// Uses the /v1/responses endpoint with web_search tool.
+
+async function queryGrokWithSearch(
+  apiKey: string,
+  model: string,
+  queryText: string,
+): Promise<EngineResponse> {
+  try {
+    const response = await fetch('https://api.x.ai/v1/responses', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify({
+        model,
+        input: queryText,
+        tools: [{ type: 'web_search' }],
+      }),
+    });
+
+    if (!response.ok) {
+      const err = await response.text();
+      return { text: '', ok: false, error: `Grok search error: ${response.status} ${err}` };
+    }
+
+    const data = await response.json() as { output?: Array<{ type: string; content?: Array<{ type: string; text?: string }> }>; usage?: { input_tokens?: number; output_tokens?: number; total_tokens?: number } };
+    const text = (data.output ?? [])
+      .filter(item => item.type === 'message')
+      .flatMap(item => (item.content ?? []).filter(c => c.type === 'output_text').map(c => c.text ?? ''))
+      .join('\n');
+
+    const usage = data.usage ? {
+      inputTokens: data.usage.input_tokens ?? 0,
+      outputTokens: data.usage.output_tokens ?? 0,
+      totalTokens: data.usage.total_tokens ?? (data.usage.input_tokens ?? 0) + (data.usage.output_tokens ?? 0),
+    } : undefined;
+
+    return { text, ok: true, provider: 'xai', model, usage };
+  } catch (err) {
+    return { text: '', ok: false, error: `Grok search error: ${err}` };
   }
 }
 

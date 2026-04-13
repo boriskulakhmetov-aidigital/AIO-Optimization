@@ -16,6 +16,7 @@ export interface EngineConfig {
   rateLimitPerMin: number;       // requests per minute cap
   apiKeyEnvVar: string;          // env var name holding the API key
   enabled: boolean;              // whether this engine is currently available
+  searchEnabled?: boolean;       // whether to use web search grounding
 }
 
 // Each engine gets its own env var so we control availability per-version.
@@ -41,13 +42,14 @@ export const ENGINE_REGISTRY: Record<EngineId, EngineConfig> = {
     shortName: 'ChatGPT Pro',
     provider: 'openai',
     tier: 'pro',
-    model: 'gpt-4o',
+    model: 'gpt-4o-search-preview',
     color: '#10A37F',
     icon: 'openai',
     maxConcurrency: 5,
     rateLimitPerMin: 30,
     apiKeyEnvVar: 'OPENAI_PRO_API_KEY',
     enabled: true,
+    searchEnabled: true,
   },
   gemini_free: {
     id: 'gemini_free',
@@ -62,6 +64,7 @@ export const ENGINE_REGISTRY: Record<EngineId, EngineConfig> = {
     rateLimitPerMin: 200,
     apiKeyEnvVar: 'GEMINI_FREE_API_KEY',
     enabled: true,
+    searchEnabled: true,
   },
   gemini_pro: {
     id: 'gemini_pro',
@@ -90,6 +93,7 @@ export const ENGINE_REGISTRY: Record<EngineId, EngineConfig> = {
     rateLimitPerMin: 100,
     apiKeyEnvVar: 'ANTHROPIC_API_KEY',
     enabled: true,
+    searchEnabled: true,
   },
   grok_free: {
     id: 'grok_free',
@@ -118,6 +122,7 @@ export const ENGINE_REGISTRY: Record<EngineId, EngineConfig> = {
     rateLimitPerMin: 30,
     apiKeyEnvVar: 'GROK_PRO_API_KEY',
     enabled: true,
+    searchEnabled: true,
   },
   perplexity: {
     id: 'perplexity',

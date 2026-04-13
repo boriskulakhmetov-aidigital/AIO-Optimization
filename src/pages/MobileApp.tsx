@@ -104,7 +104,7 @@ export default function MobileApp() {
             concept_name: brand,
             concept_category: product || brand,
             concept_context: `Organization: ${org}.${product ? ` Product: ${product}.` : ''}`,
-            engines: ['gemini_free', 'grok_pro', 'google_sge', 'chatgpt_free', 'claude'],
+            engines: ['gemini_free', 'grok_pro', 'google_sge', 'chatgpt_pro', 'claude'],
             query_count: 10,
           },
         }),
