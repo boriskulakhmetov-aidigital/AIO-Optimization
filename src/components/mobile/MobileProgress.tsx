@@ -1,5 +1,18 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import type { SupabaseClient } from '@supabase/supabase-js';
+
+const STATUS_MESSAGES = [
+  'Processing your scan…',
+  'Analyzing brand mentions…',
+  'Measuring sentiment across engines…',
+  'Comparing competitive positioning…',
+  'Evaluating recommendation strength…',
+  'Calculating share of voice…',
+  'Identifying discovery opportunities…',
+  'Cross-referencing engine results…',
+  'Building your intelligence report…',
+  'Almost there…',
+];
 
 interface EngineRow {
   engine_id: string;
@@ -28,6 +41,16 @@ interface Props {
 
 export function MobileProgress({ brandName, jobStatus, supabase, scanId }: Props) {
   const [engines, setEngines] = useState<EngineRow[]>([]);
+  const [msgIndex, setMsgIndex] = useState(0);
+  const msgInterval = useRef<ReturnType<typeof setInterval>>();
+
+  // Rotate status messages every 4s
+  useEffect(() => {
+    msgInterval.current = setInterval(() => {
+      setMsgIndex(i => (i + 1) % STATUS_MESSAGES.length);
+    }, 4000);
+    return () => clearInterval(msgInterval.current);
+  }, []);
 
   useEffect(() => {
     if (!supabase || !scanId) return;
@@ -104,12 +127,10 @@ export function MobileProgress({ brandName, jobStatus, supabase, scanId }: Props
         </div>
       )}
 
-      {isSynthesizing && (
-        <div className="mp__synthesizing">
-          <span className="mp__synth-dot" />
-          <span>Processing your scan…</span>
-        </div>
-      )}
+      <div className="mp__synthesizing">
+        <span className="mp__synth-dot" />
+        <span>{STATUS_MESSAGES[msgIndex]}</span>
+      </div>
     </div>
   );
 }
