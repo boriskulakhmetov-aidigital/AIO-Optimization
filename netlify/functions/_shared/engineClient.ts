@@ -206,7 +206,7 @@ async function queryClaudeWithSearch(
 }
 
 // ── xAI Grok with Web Search ──────────────────────────────────────────────────
-// Uses the /v1/responses endpoint with web_search tool.
+// Uses standard chat completions with search_parameters: { mode: "auto" }.
 
 async function queryGrokWithSearch(
   apiKey: string,
@@ -214,7 +214,7 @@ async function queryGrokWithSearch(
   queryText: string,
 ): Promise<EngineResponse> {
   try {
-    const response = await fetch('https://api.x.ai/v1/responses', {
+    const response = await fetch('https://api.x.ai/v1/chat/completions', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -222,8 +222,12 @@ async function queryGrokWithSearch(
       },
       body: JSON.stringify({
         model,
-        input: queryText,
-        tools: [{ type: 'web_search' }],
+        messages: [
+          { role: 'system', content: 'You are a helpful AI assistant. Answer the query directly.' },
+          { role: 'user', content: queryText },
+        ],
+        max_tokens: 2048,
+        search_parameters: { mode: 'auto' },
       }),
     });
 
@@ -232,16 +236,13 @@ async function queryGrokWithSearch(
       return { text: '', ok: false, error: `Grok search error: ${response.status} ${err}` };
     }
 
-    const data = await response.json() as { output?: Array<{ type: string; content?: Array<{ type: string; text?: string }> }>; usage?: { input_tokens?: number; output_tokens?: number; total_tokens?: number } };
-    const text = (data.output ?? [])
-      .filter(item => item.type === 'message')
-      .flatMap(item => (item.content ?? []).filter(c => c.type === 'output_text').map(c => c.text ?? ''))
-      .join('\n');
+    const data = await response.json() as { choices?: Array<{ message?: { content?: string } }>; usage?: { prompt_tokens?: number; completion_tokens?: number; total_tokens?: number } };
+    const text = data.choices?.[0]?.message?.content ?? '';
 
     const usage = data.usage ? {
-      inputTokens: data.usage.input_tokens ?? 0,
-      outputTokens: data.usage.output_tokens ?? 0,
-      totalTokens: data.usage.total_tokens ?? (data.usage.input_tokens ?? 0) + (data.usage.output_tokens ?? 0),
+      inputTokens: data.usage.prompt_tokens ?? 0,
+      outputTokens: data.usage.completion_tokens ?? 0,
+      totalTokens: data.usage.total_tokens ?? 0,
     } : undefined;
 
     return { text, ok: true, provider: 'xai', model, usage };

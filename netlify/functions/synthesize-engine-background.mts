@@ -11,6 +11,37 @@ import type { EngineId, EngineSynthesis, IntentBreakdown, ResponseExcerpt } from
 import { log } from './_shared/logger.js';
 import { getAppUrl } from '@AiDigital-com/design-system/utils';
 
+// ── Brand-aware excerpt extraction ───────────────────────────────────────────
+// Finds the sentence(s) in a response that actually mention the brand by name,
+// rather than slicing the opening which is typically generic context text.
+
+function extractBrandExcerpt(responseText: string, brandName: string, maxLen = 200): string {
+  const lower = responseText.toLowerCase();
+  const brand = brandName.toLowerCase();
+
+  // Split into sentences on common terminators
+  const sentences = responseText.split(/(?<=[.!?])\s+/);
+
+  // Find sentences that mention the brand
+  const branded = sentences.filter(s => s.toLowerCase().includes(brand));
+  if (branded.length > 0) {
+    // Return the first brand-mentioning sentence (or two if short)
+    let excerpt = branded[0];
+    if (excerpt.length < 80 && branded[1]) excerpt += ' ' + branded[1];
+    return excerpt.slice(0, maxLen);
+  }
+
+  // Fallback: slice from just before the brand mention
+  const idx = lower.indexOf(brand);
+  if (idx >= 0) {
+    const start = Math.max(0, idx - 30);
+    return responseText.slice(start, start + maxLen);
+  }
+
+  // Last resort: opening text
+  return responseText.slice(0, maxLen);
+}
+
 /* ── Per-query score (from LLM batch evaluation) ─────────────────────────── */
 
 interface QueryScore {
@@ -232,13 +263,13 @@ Be precise. Return the array of scores.`;
       .filter(s => s.sentiment === 'positive')
       .sort((a, b) => b.sentiment_score - a.sentiment_score)
       .slice(0, 3)
-      .map(s => ({ query: s.query_text.slice(0, 120), excerpt: s.response_text.slice(0, 150) }));
+      .map(s => ({ query: s.query_text.slice(0, 120), excerpt: extractBrandExcerpt(s.response_text, conceptName) }));
 
     const top_negative_responses: ResponseExcerpt[] = scoredWithText
       .filter(s => s.sentiment === 'negative')
       .sort((a, b) => a.sentiment_score - b.sentiment_score)
       .slice(0, 3)
-      .map(s => ({ query: s.query_text.slice(0, 120), excerpt: s.response_text.slice(0, 150) }));
+      .map(s => ({ query: s.query_text.slice(0, 120), excerpt: extractBrandExcerpt(s.response_text, conceptName) }));
 
     // ── Step 4: Summary (lightweight Pro call with just KPIs) ────────────
 
