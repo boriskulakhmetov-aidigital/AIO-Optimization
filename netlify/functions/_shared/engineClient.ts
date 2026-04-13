@@ -219,7 +219,9 @@ async function queryGrokWithSearch(
   queryText: string,
 ): Promise<EngineResponse> {
   try {
-    const response = await fetch('https://api.x.ai/v1/chat/completions', {
+    // xAI Agent Tools API — search_parameters on /v1/chat/completions was deprecated (410 Gone).
+    // New endpoint: /v1/responses with tools: [{ type: "web_search" }]
+    const response = await fetch('https://api.x.ai/v1/responses', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -227,12 +229,9 @@ async function queryGrokWithSearch(
       },
       body: JSON.stringify({
         model,
-        messages: [
-          { role: 'system', content: 'You are a helpful AI assistant. Answer the query directly.' },
-          { role: 'user', content: queryText },
-        ],
-        max_tokens: 2048,
-        search_parameters: { mode: 'auto' },
+        instructions: 'You are a helpful AI assistant. Answer the query directly.',
+        input: queryText,
+        tools: [{ type: 'web_search' }],
       }),
     });
 
@@ -241,12 +240,30 @@ async function queryGrokWithSearch(
       return { text: '', ok: false, error: `Grok search error: ${response.status} ${err}` };
     }
 
-    const data = await response.json() as { choices?: Array<{ message?: { content?: string } }>; usage?: { prompt_tokens?: number; completion_tokens?: number; total_tokens?: number } };
-    const text = data.choices?.[0]?.message?.content ?? '';
+    const data = await response.json() as {
+      output?: Array<{ type: string; content?: Array<{ type: string; text?: string }> }>;
+      output_text?: string;
+      usage?: { input_tokens?: number; output_tokens?: number; total_tokens?: number };
+    };
+
+    // Try output_text shorthand first, then dig into output blocks
+    const text = data.output_text
+      ?? (data.output ?? [])
+        .filter(b => b.type === 'message')
+        .flatMap(b => b.content ?? [])
+        .filter(c => c.type === 'output_text')
+        .map(c => c.text ?? '')
+        .join('\n')
+      ?? '';
+
+    if (!text) {
+      const types = (data.output ?? []).map(b => b.type).join(', ');
+      return { text: '', ok: false, error: `Grok search returned no text (output types: [${types}])` };
+    }
 
     const usage = data.usage ? {
-      inputTokens: data.usage.prompt_tokens ?? 0,
-      outputTokens: data.usage.completion_tokens ?? 0,
+      inputTokens: data.usage.input_tokens ?? 0,
+      outputTokens: data.usage.output_tokens ?? 0,
       totalTokens: data.usage.total_tokens ?? 0,
     } : undefined;
 

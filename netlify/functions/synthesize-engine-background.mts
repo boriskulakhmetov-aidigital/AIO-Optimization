@@ -22,8 +22,10 @@ function stripMarkdown(text: string): string {
     .replace(/`{1,3}[^`]*`{1,3}/g, '')          // `code` / ```block``` → remove
     .replace(/#{1,6}\s*/g, '')                   // ## headings → remove hashes
     .replace(/^\s*[-*|]\s*/gm, '')               // list bullets and table pipes at line start
+    .replace(/^\s*\d+\.\s*/gm, '')               // numbered list prefixes: "1. " → remove
+    .replace(/--+\s*/g, '')                      // -- em-dash artifacts
     .replace(/\|/g, ' ')                          // remaining | separators
-    .replace(/\s{2,}/g, ' ')                     // collapse multiple spaces
+    .replace(/[ \t]{2,}/g, ' ')                  // collapse horizontal whitespace only (preserve newlines)
     .trim();
 }
 
@@ -36,26 +38,38 @@ function extractBrandExcerpt(responseText: string, brandName: string, maxLen = 2
   const lower = cleaned.toLowerCase();
   const brand = brandName.toLowerCase();
 
-  // Split into sentences on common terminators
-  const sentences = cleaned.split(/(?<=[.!?])\s+/);
+  // Split on sentence terminators AND newlines — catches both prose and list items
+  const segments = cleaned
+    .split(/(?<=[.!?])\s+|\n+/)
+    .map(s => s.trim())
+    .filter(s => s.length > 10);
 
-  // Find sentences that mention the brand
-  const branded = sentences.filter(s => s.toLowerCase().includes(brand));
+  // Find segments that mention the brand
+  const branded = segments.filter(s => s.toLowerCase().includes(brand));
   if (branded.length > 0) {
-    // Return the first brand-mentioning sentence (or two if short)
     let excerpt = branded[0];
-    if (excerpt.length < 80 && branded[1]) excerpt += ' ' + branded[1];
-    return excerpt.slice(0, maxLen);
+    // If the branded segment is long, position the window at the brand mention
+    const brandIdx = excerpt.toLowerCase().indexOf(brand);
+    if (brandIdx > 40) {
+      const start = Math.max(0, brandIdx - 20);
+      excerpt = excerpt.slice(start, start + maxLen);
+    } else {
+      excerpt = excerpt.slice(0, maxLen);
+    }
+    // Append next branded segment if still short
+    if (excerpt.length < 80 && branded[1]) {
+      excerpt += ' ' + branded[1].slice(0, maxLen - excerpt.length - 1);
+    }
+    return excerpt;
   }
 
-  // Fallback: slice from just before the brand mention
+  // Fallback: slice from just before the brand mention in the full text
   const idx = lower.indexOf(brand);
   if (idx >= 0) {
     const start = Math.max(0, idx - 30);
     return cleaned.slice(start, start + maxLen);
   }
 
-  // Last resort: opening cleaned text
   return cleaned.slice(0, maxLen);
 }
 
