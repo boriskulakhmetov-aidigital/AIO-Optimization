@@ -12,10 +12,9 @@ interface Props {
 export function MobileProgress({ brandName, jobStatus, supabase, scanId }: Props) {
   const phase = jobStatus?.meta?.phase || jobStatus?.status || 'scanning';
 
-  const scanProgress = useScanProgress(
+  const engineProgress = useScanProgress(
     supabase,
-    phase === 'scanning' || phase === 'synthesizing' || phase === 'querying' || phase === 'generating_queries'
-      ? scanId : null,
+    phase !== 'complete' && phase !== 'error' ? scanId : null,
   );
 
   const dashPhase =
@@ -25,10 +24,30 @@ export function MobileProgress({ brandName, jobStatus, supabase, scanId }: Props
     phase === 'error' ? 'error' :
     'scanning';
 
-  const synthesisStatus = jobStatus?.meta ? {
-    phase: jobStatus.meta.phase,
-    steps_done: jobStatus.meta.steps_done,
-    total_steps: jobStatus.meta.total_steps,
+  // Transform useScanProgress output (engine map) → ScanProgress format for ScanDashboard
+  const scanProgress = scanId ? {
+    scan_id: scanId,
+    status: dashPhase === 'scanning' ? 'scanning' as const : 'synthesizing' as const,
+    engines: Object.values(engineProgress).map((e: any) => ({
+      engine_id: e.engine_id,
+      status: e.status,
+      queries_total: e.queries_total,
+      queries_done: e.queries_done,
+    })),
+    feed: [] as any[],
+  } : null;
+
+  const synthesisStatus = scanId ? {
+    scan_id: scanId,
+    scan_status: dashPhase,
+    phase: dashPhase as any,
+    engines: Object.values(engineProgress).map((e: any) => ({
+      engine_id: e.engine_id,
+      status: e.status,
+      has_synthesis: !!e.synthesis_data,
+    })),
+    review_status: dashPhase === 'reviewing' ? 'processing' : null,
+    has_report: false,
   } : null;
 
   return (
