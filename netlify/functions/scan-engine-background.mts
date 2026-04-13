@@ -136,10 +136,10 @@ export default async (req: Request) => {
     await updateScanEngineStatus(engineJobId, 'complete');
     await updateJobProgress(scanId, engineId, 'complete', completed, totalQueries);
 
-    // Track token usage for all queries in this engine
-    if (body.userId && totalAllTokens > 0) {
+    // Track token usage for all queries in this engine (including anonymous mobile scans)
+    if (totalAllTokens > 0) {
       const { trackTokens } = await import('./_shared/access.js');
-      trackTokens(body.userId, `aio-optimization:scan-${engineId}`, actualProvider || engineId, actualModel || engineId,
+      trackTokens(body.userId ?? 'mobile:anonymous', `aio-optimization:scan-${engineId}`, actualProvider || engineId, actualModel || engineId,
         totalInputTokens, totalOutputTokens, totalAllTokens).catch(() => {});
     }
 

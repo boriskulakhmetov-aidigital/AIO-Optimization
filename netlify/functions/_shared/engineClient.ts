@@ -150,7 +150,13 @@ async function queryGeminiWithSearch(
         tools: [{ googleSearch: {} }],
       },
     });
-    return { text: result.text ?? '', ok: true };
+    const meta = result.usageMetadata;
+    const usage = meta ? {
+      inputTokens: meta.promptTokenCount ?? 0,
+      outputTokens: meta.candidatesTokenCount ?? 0,
+      totalTokens: meta.totalTokenCount ?? 0,
+    } : undefined;
+    return { text: result.text ?? '', ok: true, provider: 'gemini', model, usage };
   } catch (err) {
     return { text: '', ok: false, error: `Google SGE error: ${err}` };
   }
@@ -204,7 +210,7 @@ async function queryClaudeWithSearch(
       return { text: '', ok: false, error: `Claude search returned no text blocks (stop_reason=${data.stop_reason}, blocks=[${blockTypes}])` };
     }
 
-    return { text, ok: true, provider: 'anthropic', model, usage };
+    return { text, ok: true, provider: 'claude', model, usage };
   } catch (err) {
     return { text: '', ok: false, error: `Claude search error: ${err}` };
   }
