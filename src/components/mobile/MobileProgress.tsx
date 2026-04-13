@@ -1,6 +1,23 @@
-import { useScanProgress } from '@AiDigital-com/design-system';
+import { useState, useEffect } from 'react';
 import type { SupabaseClient } from '@supabase/supabase-js';
-import { ScanDashboard } from '../ScanDashboard';
+
+interface EngineRow {
+  engine_id: string;
+  status: string;
+  queries_done: number;
+  queries_total: number;
+}
+
+const ENGINE_NAMES: Record<string, string> = {
+  chatgpt_free: 'ChatGPT',
+  chatgpt_pro: 'ChatGPT Pro',
+  gemini_free: 'Gemini',
+  gemini_pro: 'Gemini Pro',
+  google_sge: 'Google AI',
+  claude: 'Claude',
+  perplexity: 'Perplexity',
+  copilot: 'Copilot',
+};
 
 interface Props {
   brandName: string;
@@ -9,55 +26,70 @@ interface Props {
   scanId: string | null;
 }
 
-export function MobileProgress({ brandName, jobStatus, supabase, scanId }: Props) {
-  const phase = jobStatus?.meta?.phase || jobStatus?.status || 'scanning';
+export function MobileProgress({ brandName, supabase, scanId }: Props) {
+  const [engines, setEngines] = useState<EngineRow[]>([]);
 
-  const engineProgress = useScanProgress(
-    supabase,
-    phase !== 'complete' && phase !== 'error' ? scanId : null,
-  );
+  // Simple polling — fetch scan_engines every 3s
+  useEffect(() => {
+    if (!supabase || !scanId) return;
+    let active = true;
 
-  const dashPhase =
-    phase === 'reviewing' ? 'reviewing' :
-    phase === 'synthesizing' ? 'synthesizing' :
-    phase === 'complete' ? 'complete' :
-    phase === 'error' ? 'error' :
-    'scanning';
+    async function poll() {
+      const { data } = await supabase!
+        .from('scan_engines')
+        .select('engine_id, status, queries_done, queries_total')
+        .eq('scan_id', scanId);
+      if (active && data) setEngines(data);
+    }
 
-  // Transform useScanProgress output (engine map) → ScanProgress format for ScanDashboard
-  const scanProgress = scanId ? {
-    scan_id: scanId,
-    status: dashPhase === 'scanning' ? 'scanning' as const : 'synthesizing' as const,
-    engines: Object.values(engineProgress).map((e: any) => ({
-      engine_id: e.engine_id,
-      status: e.status,
-      queries_total: e.queries_total,
-      queries_done: e.queries_done,
-    })),
-    feed: [] as any[],
-  } : null;
+    poll();
+    const interval = setInterval(poll, 3000);
+    return () => { active = false; clearInterval(interval); };
+  }, [supabase, scanId]);
 
-  const synthesisStatus = scanId ? {
-    scan_id: scanId,
-    scan_status: dashPhase,
-    phase: dashPhase as any,
-    engines: Object.values(engineProgress).map((e: any) => ({
-      engine_id: e.engine_id,
-      status: e.status,
-      has_synthesis: !!e.synthesis_data,
-    })),
-    review_status: dashPhase === 'reviewing' ? 'processing' : null,
-    has_report: false,
-  } : null;
+  const totalDone = engines.reduce((s, e) => s + (e.queries_done || 0), 0);
+  const totalMax = engines.reduce((s, e) => s + (e.queries_total || 0), 0) || 1;
+  const pct = Math.round((totalDone / totalMax) * 100);
+  const completedEngines = engines.filter(e => e.status === 'complete' || e.status === 'synthesizing').length;
 
   return (
     <div className="m-progress">
-      <ScanDashboard
-        conceptName={brandName}
-        scanProgress={scanProgress}
-        synthesisStatus={synthesisStatus}
-        phase={dashPhase as any}
-      />
+      <h2 className="m-progress__brand">Scanning "{brandName}"</h2>
+      <p className="m-progress__phase">
+        {completedEngines === engines.length && engines.length > 0
+          ? 'Building your report…'
+          : `${completedEngines}/${engines.length || '—'} engines complete`}
+      </p>
+
+      {/* Progress bar */}
+      <div className="m-progress__bar-wrap">
+        <div className="m-progress__bar" style={{ width: pct + '%' }} />
+      </div>
+      <p className="m-progress__stats">{totalDone}/{totalMax} queries · {pct}%</p>
+
+      {/* Engine list */}
+      <div className="m-progress__engines">
+        {engines.map(e => {
+          const name = ENGINE_NAMES[e.engine_id] || e.engine_id;
+          const done = e.status === 'complete' || e.status === 'synthesizing';
+          const running = e.status === 'querying' || e.status === 'running' || e.status === 'pending';
+          const epct = e.queries_total ? Math.round((e.queries_done / e.queries_total) * 100) : 0;
+          return (
+            <div key={e.engine_id} className={`m-engine ${done ? 'm-engine--done' : running ? 'm-engine--active' : ''}`}>
+              <span className="m-engine__status">{done ? '✓' : running ? '⏳' : '·'}</span>
+              <span className="m-engine__name">{name}</span>
+              <span className="m-engine__pct">{epct}%</span>
+            </div>
+          );
+        })}
+      </div>
+
+      {engines.length === 0 && (
+        <div className="m-progress__waiting">
+          <div className="m-spinner" />
+          <p>Starting engines…</p>
+        </div>
+      )}
     </div>
   );
 }

@@ -153,9 +153,29 @@
 .m-progress__phase {
   font-size: 14px;
   color: var(--text-muted);
-  margin-bottom: 24px;
+  margin-bottom: 16px;
+}
+.m-progress__bar-wrap {
+  height: 6px;
+  background: var(--border);
+  border-radius: 3px;
+  overflow: hidden;
+  margin-bottom: 8px;
+}
+.m-progress__bar {
+  height: 100%;
+  background: var(--accent);
+  border-radius: 3px;
+  transition: width 0.5s ease;
+}
+.m-progress__stats {
+  font-size: 13px;
+  color: var(--text-muted);
+  margin-bottom: 20px;
+  font-variant-numeric: tabular-nums;
 }
 .m-progress__ring-wrap {
+  display: none; /* replaced by bar */
   position: relative;
   width: 140px;
   height: 140px;
