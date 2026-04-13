@@ -65,13 +65,12 @@ export default async (req: Request) => {
   const { error: taskError } = await supabase.from('pipeline_tasks').insert({
     scan_id: scanId,
     app: APP_NAME,
-    task_type: 'generate_queries',
+    task_type: 'run_audit',
     payload: {
-      scanId,
-      scanConfig,
-      selectedEngines: ENGINES,
-      queryCount: QUERIES_PER_ENGINE,
+      jobId: scanId,
+      intakeSummary: scanConfig,
       userId: 'mobile:anonymous',
+      userEmail: null,
     },
   });
 
