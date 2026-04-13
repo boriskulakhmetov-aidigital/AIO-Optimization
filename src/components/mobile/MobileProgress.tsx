@@ -1,16 +1,28 @@
 import { useState, useEffect, useRef } from 'react';
 import type { SupabaseClient } from '@supabase/supabase-js';
 
-const STATUS_MESSAGES = [
-  'Processing your scan…',
+const PREP_MESSAGES = [
+  'Generating search queries…',
+  'Crafting questions AI engines will answer…',
+  'Designing competitive comparisons…',
+  'Preparing discovery queries…',
+  'Building your question set…',
+];
+
+const SCAN_MESSAGES = [
+  'Querying AI engines…',
   'Analyzing brand mentions…',
   'Measuring sentiment across engines…',
   'Comparing competitive positioning…',
   'Evaluating recommendation strength…',
   'Calculating share of voice…',
-  'Identifying discovery opportunities…',
+];
+
+const SYNTH_MESSAGES = [
   'Cross-referencing engine results…',
   'Building your intelligence report…',
+  'Synthesizing competitive landscape…',
+  'Scoring recommendation strength…',
   'Almost there…',
 ];
 
@@ -42,15 +54,27 @@ interface Props {
 export function MobileProgress({ brandName, jobStatus, supabase, scanId }: Props) {
   const [engines, setEngines] = useState<EngineRow[]>([]);
   const [msgIndex, setMsgIndex] = useState(0);
-  const msgInterval = useRef<ReturnType<typeof setInterval>>();
+  const prevPhaseRef = useRef('');
 
-  // Rotate status messages every 4s
+  // Pick message set based on phase
+  const hasEngines = engines.length > 0;
+  const allDone = hasEngines && engines.every(e => e.status === 'complete' || e.status === 'synthesizing');
+  const messages = allDone ? SYNTH_MESSAGES : hasEngines ? SCAN_MESSAGES : PREP_MESSAGES;
+
+  // Reset index when phase changes
+  const phaseKey = allDone ? 'synth' : hasEngines ? 'scan' : 'prep';
+  if (phaseKey !== prevPhaseRef.current) {
+    prevPhaseRef.current = phaseKey;
+    setMsgIndex(0);
+  }
+
+  // Rotate every 4s
   useEffect(() => {
-    msgInterval.current = setInterval(() => {
-      setMsgIndex(i => (i + 1) % STATUS_MESSAGES.length);
+    const interval = setInterval(() => {
+      setMsgIndex(i => (i + 1) % messages.length);
     }, 4000);
-    return () => clearInterval(msgInterval.current);
-  }, []);
+    return () => clearInterval(interval);
+  }, [messages.length]);
 
   useEffect(() => {
     if (!supabase || !scanId) return;
@@ -69,13 +93,9 @@ export function MobileProgress({ brandName, jobStatus, supabase, scanId }: Props
     return () => { active = false; clearInterval(interval); };
   }, [supabase, scanId]);
 
-  const allDone = engines.length > 0 && engines.every(e => e.status === 'complete' || e.status === 'synthesizing');
-  const phase = jobStatus?.meta?.phase || jobStatus?.status || 'scanning';
-  const isSynthesizing = phase === 'synthesizing' || phase === 'reviewing' || allDone;
-
-  const statusText = isSynthesizing
+  const statusText = allDone
     ? 'Processing your scan…'
-    : engines.length > 0
+    : hasEngines
       ? `Analyzing your brand across ${engines.length} AI platforms`
       : 'Starting engines…';
 
@@ -129,7 +149,7 @@ export function MobileProgress({ brandName, jobStatus, supabase, scanId }: Props
 
       <div className="mp__synthesizing">
         <span className="mp__synth-dot" />
-        <span>{STATUS_MESSAGES[msgIndex]}</span>
+        <span>{messages[msgIndex % messages.length]}</span>
       </div>
     </div>
   );
