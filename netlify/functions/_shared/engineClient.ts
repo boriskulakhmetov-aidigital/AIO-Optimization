@@ -171,14 +171,13 @@ async function queryClaudeWithSearch(
         'Content-Type': 'application/json',
         'x-api-key': apiKey,
         'anthropic-version': '2023-06-01',
-        'anthropic-beta': 'web-search-2025-03-05',
       },
       body: JSON.stringify({
         model,
         max_tokens: 2048,
         system: 'You are a helpful AI assistant. Answer the query directly.',
         messages: [{ role: 'user', content: queryText }],
-        tools: [{ type: 'web_search_20250305', name: 'web_search', max_uses: 3 }],
+        tools: [{ type: 'web_search_20250305', name: 'web_search', max_uses: 5 }],
       }),
     });
 
