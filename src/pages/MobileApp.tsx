@@ -216,7 +216,6 @@ export default function MobileApp() {
             supabase={supabaseRef.current}
             scanId={scanId}
             onContinue={() => setPhase('email_gate')}
-            onError={(msg) => { setError(msg); setPhase('intake'); }}
           />
         )}
 

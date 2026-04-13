@@ -58,7 +58,6 @@ interface Props {
   supabase: SupabaseClient | null;
   scanId: string | null;
   onContinue: () => void;
-  onError: (msg: string) => void;
 }
 
 function KpiCard({
@@ -88,20 +87,10 @@ function KpiCard({
   );
 }
 
-export function MobileScan({ supabase, scanId, onContinue, onError }: Props) {
+export function MobileScan({ supabase, scanId, onContinue }: Props) {
   const [engines, setEngines] = useState<EngineRow[]>([]);
   const [msgIndex, setMsgIndex] = useState(0);
   const prevPhaseRef = useRef('');
-
-  // Timeout: if no engines appear within 90s, the function likely died mid-deploy
-  useEffect(() => {
-    const t = setTimeout(() => {
-      if (engines.length === 0) {
-        onError('Scan timed out — the server may have been restarting. Please try again.');
-      }
-    }, 90_000);
-    return () => clearTimeout(t);
-  }, []);
 
   // Poll scan_engines every 3s — includes synthesis_data
   useEffect(() => {
