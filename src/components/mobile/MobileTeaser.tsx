@@ -35,18 +35,15 @@ export function MobileTeaser({ data, brandName, onContinue }: Props) {
 
   const [currentEngine, setCurrentEngine] = useState(0);
 
-  // Get quotes for current engine
+  // Get top 3 positive response excerpts for current engine
   const eng = engineList[currentEngine];
   const engMeta = eng ? ENGINE_META[eng.engine_id] || { name: eng.engine_name, gradient: 'linear-gradient(135deg, #666, #444)' } : null;
   const quotes: string[] = [];
   if (eng?.top_positive_responses) {
     for (const q of eng.top_positive_responses.slice(0, 3)) {
-      const text = typeof q === 'string' ? q : q.snippet || q.response || q.text || '';
-      if (text) quotes.push(text.slice(0, 200));
+      const excerpt = typeof q === 'string' ? q : q.excerpt || q.snippet || q.response || '';
+      if (excerpt) quotes.push(excerpt.slice(0, 200));
     }
-  }
-  if (quotes.length === 0 && eng?.summary_text) {
-    quotes.push(eng.summary_text.slice(0, 200));
   }
 
   function prevEngine() { setCurrentEngine(i => i > 0 ? i - 1 : engineList.length - 1); }
