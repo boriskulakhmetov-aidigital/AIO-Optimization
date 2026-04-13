@@ -639,6 +639,48 @@
   padding: 8px 0 16px;
 }
 
+/* ── Campaign Gate (restriction screen) ── */
+.mcg {
+  padding: 48px 0 24px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: 12px;
+}
+.mcg__icon {
+  margin-bottom: 8px;
+  opacity: 0.5;
+}
+.mcg__title {
+  font-size: 22px;
+  font-weight: 700;
+  line-height: 1.2;
+  color: var(--text);
+}
+.mcg__subtitle {
+  font-size: 14px;
+  color: var(--text-muted);
+  line-height: 1.6;
+  max-width: 320px;
+}
+.mcg__form {
+  width: 100%;
+  margin-top: 8px;
+}
+.mcg__privacy {
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-top: 10px;
+}
+.mcg__link {
+  font-size: 13px;
+  color: var(--accent);
+  text-decoration: none;
+  margin-top: 8px;
+}
+.mcg__link:hover { text-decoration: underline; }
+
 /* ── Email gate ── */
 .m-email-gate {
   padding: 32px 0;
