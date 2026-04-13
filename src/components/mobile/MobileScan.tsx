@@ -40,6 +40,7 @@ const ENGINE_META: Record<string, { name: string; gradient: string }> = {
 interface SynthesisData {
   ai_sov: number;
   net_sentiment_score: number;
+  avg_rank_position: number | null;
   top_positive_responses: { query: string; excerpt: string }[];
 }
 
@@ -121,9 +122,10 @@ export function MobileScan({ supabase, scanId, onContinue }: Props) {
     ? Math.round(synthesized.reduce((s, e) => s + (e.synthesis_data!.net_sentiment_score ?? 0), 0) / synthesized.length)
     : null;
 
-  const topEngineSynth = synthesized.length > 0
-    ? synthesized.reduce((best, e) =>
-        (e.synthesis_data!.ai_sov ?? 0) > (best.synthesis_data!.ai_sov ?? 0) ? e : best)
+  // Average rank position across engines that have a rank (lower = better)
+  const rankedEngines = synthesized.filter(e => e.synthesis_data!.avg_rank_position != null);
+  const avgRank = rankedEngines.length > 0
+    ? +(rankedEngines.reduce((s, e) => s + e.synthesis_data!.avg_rank_position!, 0) / rankedEngines.length).toFixed(1)
     : null;
 
   // Phase-aware rotating messages
@@ -159,12 +161,11 @@ export function MobileScan({ supabase, scanId, onContinue }: Props) {
           colorClass="ms-kpi__icon--green"
           iconEl={
             <svg viewBox="0 0 24 24" fill="none" width="18" height="18">
-              <circle cx="11" cy="11" r="7" stroke="currentColor" strokeWidth="2"/>
-              <path d="M16 16l4 4" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
+              <path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
             </svg>
           }
-          value={topEngineSynth ? (ENGINE_META[topEngineSynth.engine_id]?.name ?? topEngineSynth.engine_id) : null}
-          label="Top Engine"
+          value={avgRank !== null ? `#${avgRank}` : null}
+          label="Avg Engine Rank"
           progress={kpiPct}
         />
         <KpiCard
@@ -193,14 +194,17 @@ export function MobileScan({ supabase, scanId, onContinue }: Props) {
           const meta = ENGINE_META[e.engine_id] ?? { name: e.engine_id, gradient: 'linear-gradient(135deg, #666, #444)' };
           const synth = e.synthesis_data;
           const pct = e.queries_total ? Math.round((e.queries_done / e.queries_total) * 100) : 0;
-          const done = synth != null || e.status === 'complete';
+          // Synthesizing = scanning finished but synthesis_data not yet written
+          const synthesizing = pct >= 100 && !synth;
           const quotes = synth?.top_positive_responses?.slice(0, 3) ?? [];
+          // Visual bar: cap at 90% during scanning so synthesizing phase is visible
+          const visualPct = synth ? 100 : synthesizing ? 90 : Math.min(pct, 90);
 
           return (
             <div key={e.engine_id} className={`ms-engine${synth ? ' ms-engine--revealed' : ''}`}>
               <div className="ms-engine__header">
                 <div className="ms-engine__icon" style={{ background: meta.gradient }}>
-                  {done ? (
+                  {synth ? (
                     <svg viewBox="0 0 24 24" fill="none" width="20" height="20">
                       <path d="M6 12.5l4 4 8-9" stroke="#fff" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/>
                     </svg>
@@ -211,16 +215,17 @@ export function MobileScan({ supabase, scanId, onContinue }: Props) {
                   )}
                 </div>
                 <span className="ms-engine__name">{meta.name}</span>
-                {!synth && <span className="ms-engine__pct">{pct}%</span>}
+                {!synth && !synthesizing && <span className="ms-engine__pct">{pct}%</span>}
+                {synthesizing && <span className="ms-engine__synth-label">Synthesizing…</span>}
                 {synth && (
                   <span className="ms-engine__sov">{Math.round(synth.ai_sov)}% SoV</span>
                 )}
               </div>
 
-              {/* Progress bar — visible while scanning */}
+              {/* Progress bar — visible while scanning or synthesizing */}
               {!synth && (
                 <div className="ms-engine__bar-wrap">
-                  <div className="ms-engine__bar" style={{ width: `${pct}%` }} />
+                  <div className={`ms-engine__bar${synthesizing ? ' ms-engine__bar--pulse' : ''}`} style={{ width: `${visualPct}%` }} />
                 </div>
               )}
 

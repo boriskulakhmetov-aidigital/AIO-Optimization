@@ -438,6 +438,19 @@
   border-radius: 2px;
   transition: width 0.4s ease;
 }
+.ms-engine__bar--pulse {
+  animation: ms-bar-pulse 1.2s ease-in-out infinite;
+}
+@keyframes ms-bar-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+.ms-engine__synth-label {
+  font-size: 11px;
+  color: var(--accent);
+  font-weight: 500;
+  animation: ms-bar-pulse 1.2s ease-in-out infinite;
+}
 .ms-engine__quotes {
   display: flex;
   flex-direction: column;
