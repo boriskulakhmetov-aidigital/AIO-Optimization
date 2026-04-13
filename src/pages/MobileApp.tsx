@@ -1,14 +1,12 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef } from 'react';
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import { BrandMark, ThemeToggle, useTheme, useJobStatus } from '@AiDigital-com/design-system';
 import { MobileIntake } from '../components/mobile/MobileIntake';
-import { MobileProgress } from '../components/mobile/MobileProgress';
-import { MobileTeaser } from '../components/mobile/MobileTeaser';
+import { MobileScan } from '../components/mobile/MobileScan';
 import { MobileEmailGate } from '../components/mobile/MobileEmailGate';
-import type { AIOReportData } from '../lib/types';
 import '../mobile.css';
 
-type MobilePhase = 'intake' | 'scanning' | 'teaser' | 'email_gate';
+type MobilePhase = 'intake' | 'scanning' | 'email_gate';
 
 interface ScanMeta {
   orgName: string;
@@ -23,7 +21,6 @@ export default function MobileApp() {
   const [phase, setPhase] = useState<MobilePhase>('intake');
   const [scanId, setScanId] = useState<string | null>(null);
   const [scanMeta, setScanMeta] = useState<ScanMeta>({ orgName: '', brandName: '', productName: '' });
-  const [reportData, setReportData] = useState<AIOReportData | null>(null);
   const [error, setError] = useState<string | null>(null);
   const { theme, toggle: toggleTheme } = useTheme();
 
@@ -32,34 +29,16 @@ export default function MobileApp() {
     supabaseRef.current = createClient(supabaseUrl, supabaseAnonKey);
   }
 
-  // Realtime job status
+  // Watch job_status for error detection — MobileScan handles progress + reveal internally
   const jobStatus = useJobStatus(
     supabaseRef.current,
     phase === 'scanning' ? scanId : null,
   );
 
-  // Watch for scan completion
-  useEffect(() => {
-    if (jobStatus?.status === 'complete' && phase === 'scanning') {
-      // Fetch report_data from scans table
-      fetchReportData();
-    } else if (jobStatus?.status === 'error' && phase === 'scanning') {
-      setError('Scan failed. Please try again.');
-      setPhase('intake');
-    }
-  }, [jobStatus?.status, phase]);
-
-  async function fetchReportData() {
-    if (!supabaseRef.current || !scanId) return;
-    const { data } = await supabaseRef.current
-      .from('scans')
-      .select('report_data')
-      .eq('id', scanId)
-      .maybeSingle();
-    if (data?.report_data) {
-      setReportData(data.report_data as AIOReportData);
-      setPhase('teaser');
-    }
+  // Handle scan errors
+  if (jobStatus?.status === 'error' && phase === 'scanning') {
+    setError('Scan failed. Please try again.');
+    setPhase('intake');
   }
 
   async function handleSubmit(org: string, brand: string, product: string) {
@@ -114,7 +93,6 @@ export default function MobileApp() {
       if (shareUrl) {
         window.location.href = shareUrl;
       } else {
-        // Fallback: try to get share_token directly
         const { data: scan } = await supabaseRef.current!
           .from('scans')
           .select('share_token')
@@ -152,18 +130,9 @@ export default function MobileApp() {
         )}
 
         {phase === 'scanning' && (
-          <MobileProgress
-            brandName={scanMeta.brandName}
-            jobStatus={jobStatus}
+          <MobileScan
             supabase={supabaseRef.current}
             scanId={scanId}
-          />
-        )}
-
-        {phase === 'teaser' && reportData && (
-          <MobileTeaser
-            data={reportData}
-            brandName={scanMeta.brandName}
             onContinue={() => setPhase('email_gate')}
           />
         )}
@@ -174,7 +143,6 @@ export default function MobileApp() {
             onSubmit={handleEmailSubmit}
           />
         )}
-
       </main>
 
       <footer className="m-footer">

@@ -300,6 +300,207 @@
 }
 @keyframes m-spin { to { transform: rotate(360deg); } }
 
+/* ── Unified Scan (MobileScan — progressive reveal) ── */
+.ms {
+  padding: 8px 0 24px;
+}
+
+/* KPI widgets — 3 across, each with fill bar */
+.ms__kpis {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+.ms-kpi {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 12px 8px 10px;
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+}
+.ms-kpi__icon {
+  width: 30px;
+  height: 30px;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 3px;
+}
+.ms-kpi__icon--blue  { background: rgba(59,130,246,0.12); color: #3B82F6; }
+.ms-kpi__icon--green { background: rgba(16,185,129,0.12); color: #10B981; }
+.ms-kpi__icon--teal  { background: rgba(20,184,166,0.12); color: #14B8A6; }
+.ms-kpi__value {
+  font-size: 17px;
+  font-weight: 800;
+  line-height: 1;
+  color: var(--text-muted);
+  min-height: 20px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+  transition: color 0.3s;
+}
+.ms-kpi__value--ready {
+  color: var(--text);
+  animation: ms-value-pop 0.35s ease;
+}
+@keyframes ms-value-pop {
+  0%   { transform: scale(0.8); opacity: 0; }
+  60%  { transform: scale(1.06); }
+  100% { transform: scale(1); opacity: 1; }
+}
+.ms-kpi__label {
+  font-size: 9px;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+  line-height: 1.3;
+}
+.ms-kpi__bar-wrap {
+  width: 100%;
+  height: 3px;
+  background: var(--border);
+  border-radius: 2px;
+  overflow: hidden;
+  margin-top: 7px;
+}
+.ms-kpi__bar {
+  height: 100%;
+  background: var(--accent);
+  border-radius: 2px;
+  transition: width 0.6s ease;
+}
+
+/* Engine cards */
+.ms__engines {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-bottom: 16px;
+}
+.ms-engine {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 14px;
+  transition: border-color 0.4s;
+}
+.ms-engine--revealed {
+  border-color: var(--accent);
+}
+.ms-engine__header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+.ms-engine__icon {
+  width: 40px;
+  height: 40px;
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+.ms-engine__name {
+  flex: 1;
+  font-size: 14px;
+  font-weight: 600;
+}
+.ms-engine__pct {
+  font-size: 13px;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+.ms-engine__sov {
+  font-size: 12px;
+  color: var(--accent);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+.ms-engine__bar-wrap {
+  height: 4px;
+  background: var(--border);
+  border-radius: 2px;
+  overflow: hidden;
+}
+.ms-engine__bar {
+  height: 100%;
+  background: #3B82F6;
+  border-radius: 2px;
+  transition: width 0.4s ease;
+}
+.ms-engine__quotes {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  animation: ms-quotes-in 0.4s ease;
+}
+@keyframes ms-quotes-in {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.ms-engine__quote {
+  background: var(--surface2);
+  border-radius: 8px;
+  padding: 9px 11px;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--text-muted);
+  border-left: 2px solid var(--accent);
+}
+.ms-engine__quote--empty {
+  font-style: italic;
+  border-left-color: var(--border);
+}
+
+/* Status line */
+.ms__status {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  margin-bottom: 16px;
+  font-size: 13px;
+  color: var(--text-muted);
+}
+.ms__status-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--accent);
+  animation: mp-pulse 1.5s ease infinite;
+  flex-shrink: 0;
+}
+
+/* Waiting (no engines yet) */
+.ms__waiting {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  padding: 40px 0;
+  color: var(--text-muted);
+}
+
+/* CTA — slides in when all engines are revealed */
+.ms__cta {
+  padding: 8px 0;
+  animation: ms-cta-in 0.5s ease;
+}
+@keyframes ms-cta-in {
+  from { opacity: 0; transform: translateY(10px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
 /* ── Teaser (Figma — KPIs top 25%, engine carousel below) ── */
 .mt {
   padding: 8px 0;
