@@ -8,15 +8,15 @@ interface EngineRow {
   queries_total: number;
 }
 
-const ENGINE_NAMES: Record<string, string> = {
-  chatgpt_free: 'ChatGPT',
-  chatgpt_pro: 'ChatGPT Pro',
-  gemini_free: 'Gemini',
-  gemini_pro: 'Gemini Pro',
-  google_sge: 'Google AI',
-  claude: 'Claude',
-  perplexity: 'Perplexity',
-  copilot: 'Copilot',
+const ENGINE_META: Record<string, { name: string; gradient: string }> = {
+  google_sge:    { name: 'Google Search', gradient: 'linear-gradient(135deg, #EA4335, #FF6D00)' },
+  gemini_free:   { name: 'Gemini',        gradient: 'linear-gradient(135deg, #00B4D8, #0096C7)' },
+  gemini_pro:    { name: 'Gemini Pro',    gradient: 'linear-gradient(135deg, #0077B6, #023E8A)' },
+  chatgpt_free:  { name: 'ChatGPT',       gradient: 'linear-gradient(135deg, #10A37F, #0D8A6A)' },
+  chatgpt_pro:   { name: 'ChatGPT Pro',   gradient: 'linear-gradient(135deg, #6C63FF, #4A42D4)' },
+  claude:        { name: 'Claude',         gradient: 'linear-gradient(135deg, #D946A8, #A855F7)' },
+  perplexity:    { name: 'Perplexity',     gradient: 'linear-gradient(135deg, #20B2AA, #2E8B8A)' },
+  copilot:       { name: 'Copilot',        gradient: 'linear-gradient(135deg, #258FDB, #0F6CBD)' },
 };
 
 interface Props {
@@ -26,10 +26,9 @@ interface Props {
   scanId: string | null;
 }
 
-export function MobileProgress({ brandName, supabase, scanId }: Props) {
+export function MobileProgress({ brandName, jobStatus, supabase, scanId }: Props) {
   const [engines, setEngines] = useState<EngineRow[]>([]);
 
-  // Simple polling — fetch scan_engines every 3s
   useEffect(() => {
     if (!supabase || !scanId) return;
     let active = true;
@@ -47,47 +46,68 @@ export function MobileProgress({ brandName, supabase, scanId }: Props) {
     return () => { active = false; clearInterval(interval); };
   }, [supabase, scanId]);
 
-  const totalDone = engines.reduce((s, e) => s + (e.queries_done || 0), 0);
-  const totalMax = engines.reduce((s, e) => s + (e.queries_total || 0), 0) || 1;
-  const pct = Math.round((totalDone / totalMax) * 100);
-  const completedEngines = engines.filter(e => e.status === 'complete' || e.status === 'synthesizing').length;
+  const allDone = engines.length > 0 && engines.every(e => e.status === 'complete' || e.status === 'synthesizing');
+  const phase = jobStatus?.meta?.phase || jobStatus?.status || 'scanning';
+  const isSynthesizing = phase === 'synthesizing' || phase === 'reviewing' || allDone;
+
+  const statusText = isSynthesizing
+    ? 'Processing your scan…'
+    : engines.length > 0
+      ? `Analyzing your brand across ${engines.length} AI platforms`
+      : 'Starting engines…';
 
   return (
-    <div className="m-progress">
-      <h2 className="m-progress__brand">Scanning "{brandName}"</h2>
-      <p className="m-progress__phase">
-        {completedEngines === engines.length && engines.length > 0
-          ? 'Building your report…'
-          : `${completedEngines}/${engines.length || '—'} engines complete`}
-      </p>
+    <div className="mp">
+      <h1 className="mp__title">Scanning AI Engines</h1>
+      <p className="mp__subtitle">{statusText}</p>
 
-      {/* Progress bar */}
-      <div className="m-progress__bar-wrap">
-        <div className="m-progress__bar" style={{ width: pct + '%' }} />
-      </div>
-      <p className="m-progress__stats">{totalDone}/{totalMax} queries · {pct}%</p>
-
-      {/* Engine list */}
-      <div className="m-progress__engines">
+      <div className="mp__engines">
         {engines.map(e => {
-          const name = ENGINE_NAMES[e.engine_id] || e.engine_id;
+          const meta = ENGINE_META[e.engine_id] || { name: e.engine_id, gradient: 'linear-gradient(135deg, #666, #444)' };
           const done = e.status === 'complete' || e.status === 'synthesizing';
-          const running = e.status === 'querying' || e.status === 'running' || e.status === 'pending';
-          const epct = e.queries_total ? Math.round((e.queries_done / e.queries_total) * 100) : 0;
+          const pct = e.queries_total ? Math.round((e.queries_done / e.queries_total) * 100) : 0;
+
           return (
-            <div key={e.engine_id} className={`m-engine ${done ? 'm-engine--done' : running ? 'm-engine--active' : ''}`}>
-              <span className="m-engine__status">{done ? '✓' : running ? '⏳' : '·'}</span>
-              <span className="m-engine__name">{name}</span>
-              <span className="m-engine__pct">{epct}%</span>
+            <div key={e.engine_id} className="mp-engine">
+              <div className="mp-engine__icon" style={{ background: meta.gradient }}>
+                {done ? (
+                  <svg viewBox="0 0 24 24" fill="none" className="mp-engine__check">
+                    <path d="M6 12.5l4 4 8-9" stroke="#fff" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/>
+                  </svg>
+                ) : (
+                  <svg viewBox="0 0 24 24" fill="none" className="mp-engine__bolt">
+                    <path d="M13 2L4 14h7l-1 8 9-12h-7l1-8z" fill="#fff" opacity="0.9"/>
+                  </svg>
+                )}
+              </div>
+              <div className="mp-engine__info">
+                <div className="mp-engine__row">
+                  <span className="mp-engine__name">{meta.name}</span>
+                  <span className="mp-engine__pct">{pct}%</span>
+                </div>
+                <div className="mp-engine__bar-wrap">
+                  <div
+                    className="mp-engine__bar"
+                    style={{ width: pct + '%' }}
+                  />
+                </div>
+              </div>
             </div>
           );
         })}
       </div>
 
       {engines.length === 0 && (
-        <div className="m-progress__waiting">
+        <div className="mp__waiting">
           <div className="m-spinner" />
           <p>Starting engines…</p>
+        </div>
+      )}
+
+      {isSynthesizing && (
+        <div className="mp__synthesizing">
+          <span className="mp__synth-dot" />
+          <span>Processing your scan…</span>
         </div>
       )}
     </div>
