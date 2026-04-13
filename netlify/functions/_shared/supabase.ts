@@ -238,7 +238,6 @@ export async function updateQueryResult(id: string, result: {
   const sb = getSupabase();
   const update: Record<string, unknown> = {
     status: result.status,
-    response_text: result.responseText ?? null,
     mentioned: result.mentioned ?? null,
     mention_position: result.mentionPosition ?? null,
     sentiment: result.sentiment ?? null,
@@ -246,6 +245,10 @@ export async function updateQueryResult(id: string, result: {
     recommendation_strength: result.recommendationStrength ?? null,
     context_type: result.contextType ?? null,
   };
+  // Only update response_text when explicitly provided (don't wipe on score-only updates)
+  if (result.responseText !== undefined) {
+    update.response_text = result.responseText || null;
+  }
   if (result.retryCount !== undefined) {
     update.retry_count = result.retryCount;
   }

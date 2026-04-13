@@ -86,7 +86,7 @@ export const ENGINE_REGISTRY: Record<EngineId, EngineConfig> = {
     shortName: 'Claude',
     provider: 'anthropic',
     tier: 'free',
-    model: 'claude-sonnet-4-6',
+    model: 'claude-3-7-sonnet-20250219',
     color: '#D4A574',
     icon: 'claude',
     maxConcurrency: 10,

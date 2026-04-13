@@ -187,7 +187,7 @@ async function queryClaudeWithSearch(
       return { text: '', ok: false, error: `Claude search error: ${response.status} ${err}` };
     }
 
-    const data = await response.json() as { content?: Array<{ type: string; text?: string }>; usage?: { input_tokens?: number; output_tokens?: number } };
+    const data = await response.json() as { content?: Array<{ type: string; text?: string }>; usage?: { input_tokens?: number; output_tokens?: number }; stop_reason?: string };
     const text = (data.content ?? [])
       .filter(b => b.type === 'text')
       .map(b => b.text ?? '')
@@ -198,6 +198,12 @@ async function queryClaudeWithSearch(
       outputTokens: data.usage.output_tokens ?? 0,
       totalTokens: (data.usage.input_tokens ?? 0) + (data.usage.output_tokens ?? 0),
     } : undefined;
+
+    // If no text blocks came back, surface a diagnostic error so retries work
+    if (!text) {
+      const blockTypes = (data.content ?? []).map(b => b.type).join(', ');
+      return { text: '', ok: false, error: `Claude search returned no text blocks (stop_reason=${data.stop_reason}, blocks=[${blockTypes}])` };
+    }
 
     return { text, ok: true, provider: 'anthropic', model, usage };
   } catch (err) {
