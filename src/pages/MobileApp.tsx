@@ -74,7 +74,17 @@ export default function MobileApp() {
       const res = await fetch('/.netlify/functions/mobile-submit', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ scanId: id, brandName: brand, orgName: org, productName: product || undefined }),
+        body: JSON.stringify({
+          jobId: id,
+          intakeSummary: {
+            concept_type: 'brand',
+            concept_name: brand,
+            concept_category: product || brand,
+            concept_context: `Organization: ${org}.${product ? ` Product: ${product}.` : ''}`,
+            engines: ['gemini_free', 'gemini_pro', 'google_sge', 'chatgpt_free', 'chatgpt_pro'],
+            query_count: 10,
+          },
+        }),
       });
       if (!res.ok) {
         const err = await res.json();
