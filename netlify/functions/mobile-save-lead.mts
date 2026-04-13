@@ -73,7 +73,7 @@ export default async (req: Request) => {
   // If review-background still hasn't set it, generate one ourselves
   if (!shareToken) {
     shareToken = crypto.randomUUID();
-    await supabase.from('scans').update({ share_token: shareToken }).eq('id', scanId);
+    await supabase.from('scans').update({ share_token: shareToken, is_public: true }).eq('id', scanId);
     console.log(`[mobile-save-lead] Generated share_token for scan ${scanId}`);
   }
 
