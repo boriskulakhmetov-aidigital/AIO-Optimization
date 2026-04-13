@@ -7,6 +7,11 @@
   node_bundler = "esbuild"
 
 [[redirects]]
+  from = "/m"
+  to   = "/index.html"
+  status = 200
+
+[[redirects]]
   from = "/embed"
   to   = "/index.html"
   status = 200

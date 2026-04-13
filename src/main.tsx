@@ -13,10 +13,17 @@ const publishableKey = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY as string;
 const isPublicReport = window.location.pathname.startsWith('/r/');
 const isHelpPage = window.location.pathname === '/help';
 const isEmbed = window.location.pathname === '/embed';
+const isMobile = window.location.pathname === '/m';
 
 applyTheme(resolveTheme());
 
-if (isEmbed) {
+if (isMobile) {
+  import('./pages/MobileApp').then(({ default: MobileApp }) => {
+    ReactDOM.createRoot(document.getElementById('root')!).render(
+      <React.StrictMode><MobileApp /></React.StrictMode>
+    );
+  });
+} else if (isEmbed) {
   const params = new URLSearchParams(window.location.search);
   const embedToken = params.get('token');
   if (embedToken) {
