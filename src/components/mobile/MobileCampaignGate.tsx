@@ -1,5 +1,5 @@
 interface Props {
-  reason: 'limit_reached' | 'campaign_ended' | 'campaign_inactive' | 'campaign_not_found' | 'not_started';
+  reason: 'limit_reached' | 'campaign_ended' | 'campaign_inactive' | 'campaign_not_found' | 'not_started' | 'no_campaign';
   endedMessage?: string | null;
   onEmailSubmit?: (email: string) => void;
 }
@@ -10,6 +10,7 @@ const REASON_COPY: Record<string, { title: string; subtitle: string }> = {
   campaign_inactive:  { title: 'Campaign paused',          subtitle: 'This campaign is temporarily paused. Leave your email and we\'ll notify you when it resumes.' },
   campaign_not_found: { title: 'Link not recognised',      subtitle: 'This campaign link is no longer active. Reach out to your AI Digital Labs contact for a new link.' },
   not_started:        { title: 'Coming soon',              subtitle: 'This campaign hasn\'t started yet. Leave your email and we\'ll notify you when it goes live.' },
+  no_campaign:        { title: 'Invite only',              subtitle: 'This tool is only available through a campaign link. Contact your AI Digital Labs representative for access.' },
 };
 
 export function MobileCampaignGate({ reason, endedMessage, onEmailSubmit }: Props) {
@@ -35,7 +36,7 @@ export function MobileCampaignGate({ reason, endedMessage, onEmailSubmit }: Prop
       <h2 className="mcg__title">{copy.title}</h2>
       <p className="mcg__subtitle">{subtitle}</p>
 
-      {onEmailSubmit && reason !== 'campaign_not_found' && (
+      {onEmailSubmit && reason !== 'campaign_not_found' && reason !== 'no_campaign' && (
         <form className="mcg__form" onSubmit={handleSubmit}>
           <div className="m-field">
             <input

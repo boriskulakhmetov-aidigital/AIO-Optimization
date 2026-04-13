@@ -8,7 +8,7 @@ import { MobileCampaignGate } from '../components/mobile/MobileCampaignGate';
 import '../mobile.css';
 
 type MobilePhase = 'loading' | 'intake' | 'scanning' | 'email_gate' | 'campaign_gate';
-type GateReason = 'limit_reached' | 'campaign_ended' | 'campaign_inactive' | 'campaign_not_found' | 'not_started';
+type GateReason = 'limit_reached' | 'campaign_ended' | 'campaign_inactive' | 'campaign_not_found' | 'not_started' | 'no_campaign';
 
 interface ScanMeta {
   orgName: string;
@@ -40,7 +40,8 @@ export default function MobileApp() {
   useEffect(() => {
     async function checkCampaign() {
       if (!campaignSlug) {
-        setPhase('intake');
+        setGateReason('no_campaign');
+        setPhase('campaign_gate');
         return;
       }
       try {
