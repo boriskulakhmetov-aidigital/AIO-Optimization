@@ -150,14 +150,7 @@ export default function MobileApp() {
       if (shareUrl) {
         window.location.href = shareUrl;
       } else {
-        const { data: scan } = await supabaseRef.current!
-          .from('scans')
-          .select('share_token')
-          .eq('id', scanId)
-          .maybeSingle();
-        if (scan?.share_token) {
-          window.location.href = `/r/${scan.share_token}`;
-        }
+        throw new Error('No share URL returned');
       }
     } catch {
       setError('Failed to save email. Please try again.');

@@ -53,16 +53,31 @@ export default async (req: Request) => {
     campaignId = campaign?.id ?? null;
   }
 
-  // Get share_token for the redirect URL
-  const { data: scan } = await supabase
-    .from('scans')
-    .select('share_token')
-    .eq('id', scanId)
-    .maybeSingle();
+  // Get share_token for the redirect URL.
+  // review-background sets share_token after synthesis — retry up to 5x (2s apart)
+  // if the email gate was hit before review-background finished.
+  let shareToken: string | null = null;
+  for (let attempt = 0; attempt < 5; attempt++) {
+    const { data: scanData } = await supabase
+      .from('scans')
+      .select('share_token')
+      .eq('id', scanId)
+      .maybeSingle();
+    if (scanData?.share_token) {
+      shareToken = scanData.share_token;
+      break;
+    }
+    if (attempt < 4) await new Promise(r => setTimeout(r, 2000));
+  }
 
-  const shareUrl = scan?.share_token
-    ? `https://aiooptimization.apps.aidigitallabs.com/r/${scan.share_token}`
-    : null;
+  // If review-background still hasn't set it, generate one ourselves
+  if (!shareToken) {
+    shareToken = crypto.randomUUID();
+    await supabase.from('scans').update({ share_token: shareToken }).eq('id', scanId);
+    console.log(`[mobile-save-lead] Generated share_token for scan ${scanId}`);
+  }
+
+  const shareUrl = `https://aiooptimization.apps.aidigitallabs.com/r/${shareToken}`;
 
   // If email is provided, try to update an existing record for this session first
   if (email) {

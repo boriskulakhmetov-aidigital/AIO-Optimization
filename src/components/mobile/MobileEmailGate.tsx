@@ -2,18 +2,22 @@ import { useState } from 'react';
 
 interface Props {
   brandName: string;
-  onSubmit: (email: string) => void;
+  onSubmit: (email: string) => Promise<void>;
 }
 
 export function MobileEmailGate({ brandName, onSubmit }: Props) {
   const [email, setEmail] = useState('');
   const [submitting, setSubmitting] = useState(false);
 
-  function handleSubmit(e: React.FormEvent) {
+  async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!email.trim() || submitting) return;
     setSubmitting(true);
-    onSubmit(email.trim());
+    try {
+      await onSubmit(email.trim());
+    } finally {
+      setSubmitting(false);
+    }
   }
 
   return (
