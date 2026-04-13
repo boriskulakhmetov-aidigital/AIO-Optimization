@@ -11,16 +11,33 @@ import type { EngineId, EngineSynthesis, IntentBreakdown, ResponseExcerpt } from
 import { log } from './_shared/logger.js';
 import { getAppUrl } from '@AiDigital-com/design-system/utils';
 
+// ── Markdown / formatting cleanup ────────────────────────────────────────────
+
+function stripMarkdown(text: string): string {
+  return text
+    .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')   // [text](url) → text
+    .replace(/!\[[^\]]*\]\([^)]+\)/g, '')        // ![img](url) → remove
+    .replace(/\*\*([^*]+)\*\*/g, '$1')           // **bold** → bold
+    .replace(/\*([^*]+)\*/g, '$1')               // *italic* → italic
+    .replace(/`{1,3}[^`]*`{1,3}/g, '')          // `code` / ```block``` → remove
+    .replace(/#{1,6}\s*/g, '')                   // ## headings → remove hashes
+    .replace(/^\s*[-*|]\s*/gm, '')               // list bullets and table pipes at line start
+    .replace(/\|/g, ' ')                          // remaining | separators
+    .replace(/\s{2,}/g, ' ')                     // collapse multiple spaces
+    .trim();
+}
+
 // ── Brand-aware excerpt extraction ───────────────────────────────────────────
 // Finds the sentence(s) in a response that actually mention the brand by name,
 // rather than slicing the opening which is typically generic context text.
 
 function extractBrandExcerpt(responseText: string, brandName: string, maxLen = 200): string {
-  const lower = responseText.toLowerCase();
+  const cleaned = stripMarkdown(responseText);
+  const lower = cleaned.toLowerCase();
   const brand = brandName.toLowerCase();
 
   // Split into sentences on common terminators
-  const sentences = responseText.split(/(?<=[.!?])\s+/);
+  const sentences = cleaned.split(/(?<=[.!?])\s+/);
 
   // Find sentences that mention the brand
   const branded = sentences.filter(s => s.toLowerCase().includes(brand));
@@ -35,11 +52,11 @@ function extractBrandExcerpt(responseText: string, brandName: string, maxLen = 2
   const idx = lower.indexOf(brand);
   if (idx >= 0) {
     const start = Math.max(0, idx - 30);
-    return responseText.slice(start, start + maxLen);
+    return cleaned.slice(start, start + maxLen);
   }
 
-  // Last resort: opening text
-  return responseText.slice(0, maxLen);
+  // Last resort: opening cleaned text
+  return cleaned.slice(0, maxLen);
 }
 
 /* ── Per-query score (from LLM batch evaluation) ─────────────────────────── */
