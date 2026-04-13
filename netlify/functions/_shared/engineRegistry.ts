@@ -115,7 +115,7 @@ export const ENGINE_REGISTRY: Record<EngineId, EngineConfig> = {
     shortName: 'Grok Pro',
     provider: 'xai',
     tier: 'pro',
-    model: 'grok-3',
+    model: 'grok-4',
     color: '#0D7EC4',
     icon: 'grok',
     maxConcurrency: 5,
