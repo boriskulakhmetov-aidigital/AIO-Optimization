@@ -5,11 +5,10 @@ import { MobileIntake } from '../components/mobile/MobileIntake';
 import { MobileProgress } from '../components/mobile/MobileProgress';
 import { MobileTeaser } from '../components/mobile/MobileTeaser';
 import { MobileEmailGate } from '../components/mobile/MobileEmailGate';
-import { AIOReport } from '../components/report/AIOReport';
 import type { AIOReportData } from '../lib/types';
 import '../mobile.css';
 
-type MobilePhase = 'intake' | 'scanning' | 'teaser' | 'email_gate' | 'report';
+type MobilePhase = 'intake' | 'scanning' | 'teaser' | 'email_gate';
 
 interface ScanMeta {
   orgName: string;
@@ -111,7 +110,20 @@ export default function MobileApp() {
         }),
       });
       if (!res.ok) throw new Error('Failed to save');
-      setPhase('report');
+      const { shareUrl } = await res.json();
+      if (shareUrl) {
+        window.location.href = shareUrl;
+      } else {
+        // Fallback: try to get share_token directly
+        const { data: scan } = await supabaseRef.current!
+          .from('scans')
+          .select('share_token')
+          .eq('id', scanId)
+          .maybeSingle();
+        if (scan?.share_token) {
+          window.location.href = `/r/${scan.share_token}`;
+        }
+      }
     } catch {
       setError('Failed to save email. Please try again.');
     }
@@ -163,18 +175,6 @@ export default function MobileApp() {
           />
         )}
 
-        {phase === 'report' && reportData && (
-          <AIOReport
-            data={reportData}
-            conceptName={scanMeta.brandName}
-            onNewScan={() => {
-              setPhase('intake');
-              setScanId(null);
-              setReportData(null);
-            }}
-            isPrintMode={false}
-          />
-        )}
       </main>
 
       <footer className="m-footer">
