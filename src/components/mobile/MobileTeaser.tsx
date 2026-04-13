@@ -7,42 +7,23 @@ interface Props {
 }
 
 export function MobileTeaser({ data, brandName, onContinue }: Props) {
-  // Extract KPIs from report data
-  const overview = data.overview || data.executive_summary || {};
-  const kpis = data.kpis || overview.kpis || {};
-  const engines = data.engines || data.engine_results || [];
+  const rd = data as any;
 
-  const aiSov = kpis.ai_share_of_voice ?? kpis.ai_sov ?? '—';
-  const sentiment = kpis.net_sentiment ?? kpis.sentiment ?? '—';
-  const topEngine = kpis.top_engine ?? kpis.strongest_engine ?? (engines[0]?.engine_name || '—');
+  // KPIs live at overall_kpis (or cross_engine_review for fallback)
+  const kpis = rd.overall_kpis || {};
+  const review = rd.cross_engine_review || {};
 
-  // Collect up to 3 quotes per engine
-  const engineQuotes: Array<{ engine: string; quotes: string[] }> = [];
-  const engineList = Array.isArray(engines) ? engines : [];
-  for (const eng of engineList) {
-    const name = eng.engine_name || eng.engine || eng.name || 'Unknown';
-    const quotes: string[] = [];
+  const aiSov = kpis.ai_sov ?? review.overall_ai_sov ?? '—';
+  const sentiment = kpis.net_sentiment ?? review.overall_net_sentiment ?? '—';
 
-    // Try different quote sources
-    const queryResults = eng.query_results || eng.queries || eng.raw_queries || [];
-    for (const q of queryResults) {
-      const snippet = q.snippet || q.response_snippet || q.first_mention || q.context;
-      if (snippet && quotes.length < 3) {
-        quotes.push(snippet.slice(0, 150));
-      }
-    }
+  // Engine syntheses — array or object
+  const engineList: any[] = Array.isArray(rd.engine_syntheses)
+    ? rd.engine_syntheses
+    : Object.values(rd.engine_syntheses || {});
 
-    // Fallback: use synthesis highlights
-    if (quotes.length === 0 && eng.synthesis_data?.key_findings) {
-      for (const f of eng.synthesis_data.key_findings.slice(0, 3)) {
-        quotes.push(typeof f === 'string' ? f.slice(0, 150) : String(f).slice(0, 150));
-      }
-    }
-
-    if (quotes.length > 0) {
-      engineQuotes.push({ engine: name, quotes });
-    }
-  }
+  // Find strongest engine
+  const sorted = [...engineList].sort((a, b) => (b.ai_sov || 0) - (a.ai_sov || 0));
+  const topEngine = sorted[0]?.engine_name || review.most_aware_engine || '—';
 
   return (
     <div className="m-teaser">
@@ -67,18 +48,38 @@ export function MobileTeaser({ data, brandName, onContinue }: Props) {
         </div>
       </div>
 
-      {/* Engine quotes */}
-      {engineQuotes.length > 0 && (
+      {/* Engine quotes — 3 per engine */}
+      {engineList.length > 0 && (
         <div className="m-teaser__quotes">
           <h3 className="m-teaser__section-title">What AI engines say about you</h3>
-          {engineQuotes.map(eq => (
-            <div key={eq.engine} className="m-quote-group">
-              <h4 className="m-quote-group__engine">{eq.engine}</h4>
-              {eq.quotes.map((q, i) => (
-                <blockquote key={i} className="m-quote">"{q}"</blockquote>
-              ))}
-            </div>
-          ))}
+          {engineList.map((eng: any, i: number) => {
+            const name = eng.engine_name || eng.engine_id || 'Engine ' + (i + 1);
+            const quotes: string[] = [];
+
+            // top_positive_responses has the best quotes
+            if (eng.top_positive_responses) {
+              for (const q of eng.top_positive_responses.slice(0, 3)) {
+                const text = typeof q === 'string' ? q : q.snippet || q.response || q.text || '';
+                if (text) quotes.push(text.slice(0, 150));
+              }
+            }
+
+            // Fallback to summary_text
+            if (quotes.length === 0 && eng.summary_text) {
+              quotes.push(eng.summary_text.slice(0, 150));
+            }
+
+            if (quotes.length === 0) return null;
+
+            return (
+              <div key={i} className="m-quote-group">
+                <h4 className="m-quote-group__engine">{name}</h4>
+                {quotes.map((q, j) => (
+                  <blockquote key={j} className="m-quote">"{q}"</blockquote>
+                ))}
+              </div>
+            );
+          })}
         </div>
       )}
 
