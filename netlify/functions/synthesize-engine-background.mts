@@ -15,17 +15,19 @@ import { getAppUrl } from '@AiDigital-com/design-system/utils';
 
 function stripMarkdown(text: string): string {
   return text
-    .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')   // [text](url) → text
-    .replace(/!\[[^\]]*\]\([^)]+\)/g, '')        // ![img](url) → remove
-    .replace(/\*\*([^*]+)\*\*/g, '$1')           // **bold** → bold
-    .replace(/\*([^*]+)\*/g, '$1')               // *italic* → italic
-    .replace(/`{1,3}[^`]*`{1,3}/g, '')          // `code` / ```block``` → remove
-    .replace(/#{1,6}\s*/g, '')                   // ## headings → remove hashes
-    .replace(/^\s*[-*|]\s*/gm, '')               // list bullets and table pipes at line start
-    .replace(/^\s*\d+\.\s*/gm, '')               // numbered list prefixes: "1. " → remove
-    .replace(/--+\s*/g, '')                      // -- em-dash artifacts
-    .replace(/\|/g, ' ')                          // remaining | separators
-    .replace(/[ \t]{2,}/g, ' ')                  // collapse horizontal whitespace only (preserve newlines)
+    .replace(/\[\[\d+\]\]\([^)]*\)/g, '')        // [[7]](https://url) → remove (Grok citations)
+    .replace(/\[\[\d+\]\]/g, '')                  // [[7]] → remove (standalone)
+    .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')     // [text](url) → text
+    .replace(/!\[[^\]]*\]\([^)]+\)/g, '')         // ![img](url) → remove
+    .replace(/\*\*([^*]+)\*\*/g, '$1')            // **bold** → bold
+    .replace(/\*([^*]+)\*/g, '$1')                // *italic* → italic
+    .replace(/`{1,3}[^`]*`{1,3}/g, '')           // `code` / ```block``` → remove
+    .replace(/#{1,6}\s*/g, '')                    // ## headings → remove hashes
+    .replace(/^\s*[-*|]\s*/gm, '')                // list bullets and table pipes at line start
+    .replace(/^\s*\d+\.\s*/gm, '')                // numbered list prefixes: "1. " → remove
+    .replace(/--+\s*/g, '')                       // -- em-dash artifacts
+    .replace(/\|/g, ' ')                           // remaining | separators
+    .replace(/[ \t]{2,}/g, ' ')                   // collapse horizontal whitespace only (preserve newlines)
     .trim();
 }
 
@@ -44,8 +46,14 @@ function extractBrandExcerpt(responseText: string, brandName: string, maxLen = 2
     .map(s => s.trim())
     .filter(s => s.length > 10);
 
-  // Find segments that mention the brand
-  const branded = segments.filter(s => s.toLowerCase().includes(brand));
+  // Find segments that mention the brand AND have meaningful content beyond just the brand name
+  const branded = segments.filter(s => {
+    if (!s.toLowerCase().includes(brand)) return false;
+    // Reject segments that are just the brand name with minimal surrounding context
+    const withoutBrand = s.replace(new RegExp(brand.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi'), '')
+      .replace(/[—\-\s,:;.()\[\]]+/g, ' ').trim();
+    return withoutBrand.length >= 25;
+  });
   if (branded.length > 0) {
     let excerpt = branded[0];
     // If the branded segment is long, position the window at the brand mention
