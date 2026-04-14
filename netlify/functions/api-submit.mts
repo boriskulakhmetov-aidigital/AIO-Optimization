@@ -107,15 +107,15 @@ export default async (req: Request) => {
 
   // Enqueue the first pipeline task — the task-worker (cron) will pick it up
   // No function-to-function calls, no background functions, no streaming hacks
+  // task_type: 'run_audit' → aio-anchor (N-Lambda Phase 1, generates queries + dispatches engines)
+  // Payload shape matches what aio-anchor destructures: { jobId, intakeSummary, userId, userEmail }
   const { error: taskError } = await supabase.from('pipeline_tasks').insert({
     scan_id: scanId,
     app: 'aio-optimization',
-    task_type: 'generate_queries',
+    task_type: 'run_audit',
     payload: {
-      scanId,
-      scanConfig,
-      selectedEngines,
-      queryCount: clampedQueryCount,
+      jobId: scanId,
+      intakeSummary: scanConfig,
       userId: effectiveUserId,
       userEmail: effectiveEmail,
     },
