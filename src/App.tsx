@@ -84,7 +84,7 @@ function ScanBridgeProvider() {
   }, [session.sessionId]);
 
   // ── Scan dispatch handler ──
-  const DEFAULT_ENGINES: EngineId[] = ['chatgpt_free', 'gemini_free', 'claude', 'perplexity', 'copilot'];
+  const DEFAULT_ENGINES: EngineId[] = ['google_sge', 'chatgpt_free', 'claude', 'grok_free', 'gemini_free'];
 
   async function handleScanDispatch(config: ScanDispatchConfig, sessionId: string, messages: { role: string; content: string }[]) {
     const resolvedConfig: ScanDispatchConfig = {
