@@ -9,7 +9,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "@AiDigital-com/design-system": "^7.45.1",
+    "@AiDigital-com/design-system": "^7.46.0",
     "@clerk/backend": "^3.2.0",
     "@clerk/react": "^6.1.0",
     "@google/genai": "^1.46.0",
