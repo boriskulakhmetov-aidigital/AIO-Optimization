@@ -17,7 +17,7 @@ export function useOrchestrator(
   onScanDispatch: (config: ScanDispatchConfig, sessionId: string, messages: ChatMessage[]) => void,
   session: UseSessionPersistenceReturn | null,
 ) {
-  const { getToken } = useAuth();
+  const { getToken, userId } = useAuth();
   const [streaming, setStreaming] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -64,6 +64,8 @@ export function useOrchestrator(
         },
         body: JSON.stringify({
           messages: messagesRef.current.map(m => ({ role: m.role, content: m.content })),
+          sessionId: session.sessionId ?? null,
+          userId: userId ?? null,
         }),
       });
 

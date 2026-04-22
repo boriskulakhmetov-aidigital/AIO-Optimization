@@ -1,4 +1,4 @@
-import { createLLMProvider, type ToolDefinition, type ToolCall } from '@AiDigital-com/design-system/server';
+import { createLLMProvider, registerUrlAssets, type ToolDefinition, type ToolCall } from '@AiDigital-com/design-system/server';
 import { ORCHESTRATOR_SYSTEM_PROMPT } from './_shared/orchestratorPrompt.js';
 import { requireAuthOrEmbed } from './_shared/auth.js';
 import { log } from './_shared/logger.js';
@@ -61,9 +61,38 @@ export default async (req: Request) => {
   }
 
   const body = await req.json();
-  const { messages = [] } = body;
+  const { messages = [], sessionId, userId: bodyUserId } = body;
+  const effectiveUserId: string | null = bodyUserId ?? userId ?? null;
 
   const llm = createLLMProvider('gemini', process.env.GEMINI_API_KEY!, 'fast', { supabase });
+
+  // Server-side URL detection: scan user messages for URLs, create canonical
+  // type='url' asset rows (idempotent). AIO is concept-based but users may
+  // reference competitor/landing URLs.
+  if (effectiveUserId) {
+    try {
+      const registered = await registerUrlAssets({
+        messages,
+        userId: effectiveUserId,
+        app: 'aio',
+        sessionId: sessionId ?? null,
+        supabase: supabase as any,
+        onLog: (stage, data) => log.info(`orchestrator.${stage}`, {
+          function_name: 'orchestrator', entity_id: sessionId ?? null, user_id: effectiveUserId, meta: data,
+        }),
+      });
+      if (registered.length > 0) {
+        log.info('orchestrator.url_assets_registered', {
+          function_name: 'orchestrator', entity_id: sessionId ?? null, user_id: effectiveUserId,
+          meta: { count: registered.length, created: registered.filter(r => r.created).length },
+        });
+      }
+    } catch (err: any) {
+      log.warn('orchestrator.url_registration_failed', {
+        function_name: 'orchestrator', entity_id: sessionId ?? null, user_id: effectiveUserId, message: err?.message || String(err),
+      });
+    }
+  }
 
   const chatMessages = messages.map((m: { role: string; content: string }) => ({
     role: m.role as 'user' | 'assistant',
