@@ -9,7 +9,7 @@ import type { ScanDispatchConfig } from './hooks/useOrchestrator';
 import { EngineSelector } from './components/EngineSelector';
 import { ScanDashboard } from './components/ScanDashboard';
 import { ScanSidebar } from './components/ScanSidebar';
-import { AIOReport } from './components/report/AIOReport';
+import { MicroReport } from './components/micro-report/MicroReport';
 import type { AIOReportData, EngineId } from './lib/types';
 
 const supabaseConfig = import.meta.env.VITE_SUPABASE_URL ? {
@@ -369,12 +369,12 @@ function ScanBridgeProvider() {
               )}
 
               {phase === 'report_ready' && reportData && (
-                <AIOReport
+                <MicroReport
                   data={reportData}
-                  conceptName={conceptName}
-                  onNewScan={handleNewScan}
-                  scanId={scanId}
+                  scanId={scanId ?? ''}
                   supabase={ctx.supabase}
+                  isEmbedded
+                  onNewScan={handleNewScan}
                 />
               )}
 

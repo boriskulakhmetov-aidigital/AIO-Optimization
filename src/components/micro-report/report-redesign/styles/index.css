@@ -1,0 +1,12 @@
+/**
+ * AIO Report redesign — stylesheet bundle.
+ *
+ * Shell (rail/sidebar/topbar/variant-base), entrance animations, and FX
+ * layers (sweep + ambient + showcase) come from the shared DS side-entry.
+ * AIO-specific rules (panel cards, engine marks layout, matrix grid,
+ * variant bodies) are layered on top.
+ */
+@import '@AiDigital-com/design-system/report-visual.css';
+@import './2-aio-panel.css';
+@import './1-aio-variants.css';
+@import './3-aio-animations.css';
