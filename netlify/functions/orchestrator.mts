@@ -74,7 +74,7 @@ export default async (req: Request) => {
       const registered = await registerUrlAssets({
         messages,
         userId: effectiveUserId,
-        app: 'aio',
+        app: 'aio-optimization',
         sessionId: sessionId ?? null,
         supabase: supabase as any,
         onLog: (stage, data) => log.info(`orchestrator.${stage}`, {
