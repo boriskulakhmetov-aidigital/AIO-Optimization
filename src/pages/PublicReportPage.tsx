@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { createClient } from '@supabase/supabase-js';
 import { BrandMark, ThemeToggle, useTheme, ReportViewer, downloadVisualPDF } from '@AiDigital-com/design-system';
-import { AIOReport } from '../components/report/AIOReport';
+import { MicroReport } from '../components/micro-report/MicroReport';
 import type { AIOReportData } from '../lib/types';
 
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL as string;
@@ -124,10 +124,11 @@ export function PublicReportPage() {
             </div>
           )}
           {reportData && (
-            <AIOReport
+            <MicroReport
               data={reportData}
-              conceptName={conceptName}
-              onNewScan={() => { window.location.href = '/'; }}
+              scanId={token}
+              isPublic
+              downloadTitle={conceptName || undefined}
               isPrintMode={new URLSearchParams(window.location.search).get('pdf-mode') === '1'}
             />
           )}

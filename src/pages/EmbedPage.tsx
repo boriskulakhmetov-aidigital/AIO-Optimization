@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 import {
   EmbedLayout, ChatPanel,
   applyTheme, resolveTheme, aiLabsTheme,
-  useScanProgress, useJobStatus, ConnectedShareBar,
+  useScanProgress, useJobStatus,
 } from '@AiDigital-com/design-system'
 import type { SupabaseClient } from '@AiDigital-com/design-system'
 import '@AiDigital-com/design-system/style.css'
@@ -10,7 +10,7 @@ import { createClient } from '@supabase/supabase-js'
 import { parseSSEStream } from '@AiDigital-com/design-system'
 import type { AppPhase, AIOReportData } from '../lib/types'
 import { ScanDashboard } from '../components/ScanDashboard'
-import { AIOReport } from '../components/report/AIOReport'
+import { MicroReport } from '../components/micro-report/MicroReport'
 
 const APP_NAME = 'aio-optimization'
 const APP_TITLE = 'AIO Optimization'
@@ -295,16 +295,14 @@ export default function EmbedPage({ token, theme }: Props) {
       )}
 
       {phase === 'report_ready' && reportData && (
-        <>
-          <ConnectedShareBar jobId={scanId} supabase={supabaseRef.current} tableName="scans" />
-          <AIOReport
-            data={reportData}
-            conceptName={conceptName}
-            onNewScan={handleNewScan}
-            scanId={scanId}
-            supabase={supabaseRef.current}
-          />
-        </>
+        <MicroReport
+          data={reportData}
+          scanId={scanId ?? ''}
+          supabase={supabaseRef.current}
+          isEmbedded
+          downloadTitle={conceptName || undefined}
+          onNewScan={handleNewScan}
+        />
       )}
 
       {phase === 'report_ready' && !reportData && (

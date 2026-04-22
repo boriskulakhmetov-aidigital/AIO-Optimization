@@ -121,12 +121,8 @@ html[data-theme="light"] .aio-hero-stat--primary.k-good .aio-hero-stat-v { color
 .aio-hero-stat-bar { margin-top: 8px; }
 .aio-hero-stat .aio-sentiment-meter { margin-top: 8px; }
 
-/* ---------- Leaderboard (sticky) ---------- */
+/* ---------- Leaderboard ---------- */
 .aio-leaderboard {
-  position: sticky;
-  top: 74px; /* below topbar */
-  z-index: 10;
-  backdrop-filter: blur(8px);
   background: color-mix(in srgb, var(--surface) 94%, transparent);
 }
 html[data-theme="light"] .aio-leaderboard {
